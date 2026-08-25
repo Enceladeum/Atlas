@@ -131,6 +131,66 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   const findPanel = el("div", { class: "vp-panel vp-find" });
   host.append(overlays, layersPanel, selPanel, statbar, findPanel);
 
+  // ---- movable panels: drag by a panel's header (h3), position remembered;
+  // double-click the header to snap back to the CSS default spot ----
+  const PANEL_POS_KEY = "atlas.vpPanels";
+  let panelPos = {};
+  try { panelPos = JSON.parse(localStorage.getItem(PANEL_POS_KEY) || "{}"); } catch { /* corrupt: defaults */ }
+  const savePanelPos = () => localStorage.setItem(PANEL_POS_KEY, JSON.stringify(panelPos));
+  const clampPanel = (p) => {
+    const hw = host.clientWidth, hh = host.clientHeight;
+    if (!hw || !hh) return;
+    p.style.left = Math.min(Math.max(0, p.offsetLeft), Math.max(0, hw - 60)) + "px";
+    p.style.top = Math.min(Math.max(0, p.offsetTop), Math.max(0, hh - 26)) + "px";
+    p.style.right = "auto"; p.style.bottom = "auto";
+  };
+  const draggablePanel = (panel, key) => {
+    const saved = panelPos[key];
+    if (saved) requestAnimationFrame(() => {
+      panel.style.left = saved.l + "px"; panel.style.top = saved.t + "px";
+      panel.style.right = "auto"; clampPanel(panel);
+    });
+    panel.addEventListener("pointerdown", (e) => {
+      const h3 = e.target.closest("h3");
+      if (!h3 || h3.parentElement !== panel) return;
+      e.preventDefault();
+      const r = panel.getBoundingClientRect(), hr = host.getBoundingClientRect();
+      const dx = e.clientX - r.left, dy = e.clientY - r.top;
+      const move = (ev) => {
+        panel.style.left = (ev.clientX - hr.left - dx) + "px";
+        panel.style.top = (ev.clientY - hr.top - dy) + "px";
+        panel.style.right = "auto"; panel.style.bottom = "auto";
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        clampPanel(panel);
+        panelPos[key] = { l: panel.offsetLeft, t: panel.offsetTop };
+        savePanelPos();
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    panel.addEventListener("dblclick", (e) => {
+      const h3 = e.target.closest("h3");
+      if (!h3 || h3.parentElement !== panel) return;
+      delete panelPos[key]; savePanelPos();
+      panel.style.left = panel.style.top = panel.style.right = panel.style.bottom = "";
+    });
+  };
+  draggablePanel(overlays, "overlays");
+  draggablePanel(layersPanel, "layers");
+  draggablePanel(findPanel, "find");
+  draggablePanel(selPanel, "sel");
+  // Find's CSS default (top 150px) predates the taller Overlays panel; when the
+  // user hasn't placed it, flow it just below Overlays instead of overlapping
+  if (!panelPos.find) requestAnimationFrame(() => {
+    if (findPanel.isConnected) findPanel.style.top = (overlays.offsetTop + overlays.offsetHeight + 10) + "px";
+  });
+  new ResizeObserver(() => {
+    for (const p of [overlays, layersPanel, findPanel, selPanel]) if (p.style.left) clampPanel(p);
+  }).observe(host);
+
   const vp = new Viewport(host, {
     onSelect: (sel) => {
       if (!sel) { selPanel.style.display = "none"; return; }
@@ -138,26 +198,31 @@ async function renderWorkspace(main, tt, info, refresh = false) {
       selPanel.innerHTML = "";
       const ex = sel.extras || {};
       const quad = [ex.territoryId, ex.lgbFile, ex.layerId, ex.instanceId];
-      selPanel.append(
-        el("h3", {}, "Selection"),
-        el("div", { class: "body" },
-          el("div", { class: "k" }, "node"), el("div", { class: "v" }, sel.name || "(unnamed)"),
-          quad.every(v => v !== undefined) ? [
-            el("div", { class: "k" }, "identity (TerritoryId · LgbFile · LayerId · InstanceId)"),
-            el("div", { class: "v accent" }, quad.join(" · ")),
-          ] : Object.keys(ex).length ? [
-            el("div", { class: "k" }, "extras"),
-            el("div", { class: "v" }, JSON.stringify(ex)),
-          ] : [],
-          el("div", { class: "k" }, "point"),
-          el("div", { class: "v" }, [sel.point.x, sel.point.y, sel.point.z].map(n => n.toFixed(2)).join(", ")),
-          el("div", { style: "margin-top:8px; display:flex; gap:6px" },
-            el("button", { class: "btn", onclick: () => sel.focus() }, "Focus"),
-            quad.every(v => v !== undefined) ? el("button", { class: "btn", onclick: () => {
-              navigator.clipboard.writeText(quad.join(","));
-              toast("Identity copied");
-            } }, "Copy identity") : null),
-        ));
+      const K = (t) => el("div", { class: "k" }, t);
+      const V = (t, path) => el("div", { class: "v" + (path ? " path" : "") }, t);
+      const body = [K("node"), V(sel.name || "(unnamed)")];
+      if (quad.every(v => v !== undefined))
+        body.push(K("identity (TerritoryId · LgbFile · LayerId · InstanceId)"),
+          el("div", { class: "v accent" }, quad.join(" · ")));
+      if (ex.assetPath) body.push(K(ex.water ? "model (water surface)" : "model"), V(ex.assetPath, true));
+      if (ex.sgbPath) body.push(K(ex.sgbState ? `via sgb · state ${ex.sgbState}` : "via sgb"), V(ex.sgbPath, true));
+      if (ex.collider) body.push(K("collider group"), V(ex.collider, true));
+      if (ex.pcbPath) body.push(K("pcb"), V(ex.pcbPath, true));
+      if (!ex.assetPath && !ex.collider && !quad.every(v => v !== undefined) && Object.keys(ex).length)
+        body.push(K("extras"), V(JSON.stringify(ex)));
+      body.push(K("point"), V([sel.point.x, sel.point.y, sel.point.z].map(n => n.toFixed(2)).join(", ")));
+      const copyPath = ex.assetPath || ex.pcbPath || ex.sgbPath;
+      body.push(el("div", { style: "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap" },
+        el("button", { class: "btn", onclick: () => sel.focus() }, "Focus"),
+        quad.every(v => v !== undefined) ? el("button", { class: "btn", onclick: () => {
+          navigator.clipboard.writeText(quad.join(","));
+          toast("Identity copied");
+        } }, "Copy identity") : null,
+        copyPath ? el("button", { class: "btn", onclick: () => {
+          navigator.clipboard.writeText(copyPath);
+          toast("Path copied");
+        } }, "Copy path") : null));
+      selPanel.append(el("h3", {}, "Selection"), el("div", { class: "body" }, ...body));
     },
   });
   activeVp = vp;

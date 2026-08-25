@@ -168,7 +168,18 @@ export class Viewport {
     const mat = new THREE.MeshBasicMaterial({
       color: 0x3ba55f, wireframe: true, transparent: true, opacity: 0.28, depthWrite: false,
     });
-    obj.traverse(o => { if (o.isMesh) o.material = mat; });
+    // the exporter writes "g <Source>_<InstanceId>_<n>" followed by "# <PcbPath>"
+    // (a comment OBJLoader drops); recover it so picks can name the collider file
+    const pcbByGroup = new Map();
+    const gre = /^g[ \t]+(\S+)\r?\n#[ \t]+(\S+)/gm;
+    let gm; while ((gm = gre.exec(text))) pcbByGroup.set(gm[1], gm[2]);
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = mat;
+      o.userData.collider = o.name;
+      const pp = pcbByGroup.get(o.name);
+      if (pp) o.userData.pcbPath = pp;
+    });
     this.collisionRoot = obj;
     this.scene.add(obj);
     if (!this.mapRoot) this.fit(obj);
@@ -274,17 +285,23 @@ export class Viewport {
   }
 
   _pick(e) {
-    if (!this.mapRoot || !this.mapRoot.visible) return;
+    const roots = [];
+    if (this.mapRoot && this.mapRoot.visible) roots.push(this.mapRoot);
+    if (this.collisionRoot && this.collisionRoot.visible) roots.push(this.collisionRoot);
+    if (!roots.length) return;
     const r = this.renderer.domElement.getBoundingClientRect();
     const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this._raycaster.setFromCamera(p, this.camera);
-    const hits = this._raycaster.intersectObject(this.mapRoot, true);
-    const hit = hits.find(h => h.object.isMesh && h.object.visible);
+    const hits = this._raycaster.intersectObjects(roots, true);
+    // Raycaster ignores ancestor visibility, so a state/layer-hidden mesh would
+    // still pick; require the whole chain visible
+    const effVis = (o) => { for (let q = o; q; q = q.parent) if (!q.visible) return false; return true; };
+    const hit = hits.find(h => h.object.isMesh && effVis(h.object));
     if (!hit) { this._clearSel(); this.onSelect?.(null); return; }
     // walk up to the node that carries the identity extras
     let n = hit.object;
-    while (n && n !== this.mapRoot && !(n.userData && n.userData.instanceId !== undefined)) n = n.parent;
-    const node = (n && n !== this.mapRoot) ? n : hit.object;
+    while (n && n !== this.mapRoot && n !== this.collisionRoot && !(n.userData && n.userData.instanceId !== undefined)) n = n.parent;
+    const node = (n && n !== this.mapRoot && n !== this.collisionRoot) ? n : hit.object;
     this._select(hit.object);
     this.onSelect?.({
       name: node.name || hit.object.name,

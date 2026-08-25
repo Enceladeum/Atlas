@@ -245,6 +245,9 @@ details.drawer pre {
   backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,.35);
   font-size: 12.5px; overflow: hidden;
 }
+.vp-panel h3 { cursor: grab; user-select: none; }
+.vp-panel h3:active { cursor: grabbing; }
+.vp-sel .v.path { word-break: break-all; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; }
 .vp-panel h3 {
   margin: 0; padding: 8px 12px; font-size: 11px; letter-spacing: .8px;
   text-transform: uppercase; color: var(--fg2); font-weight: 650;
