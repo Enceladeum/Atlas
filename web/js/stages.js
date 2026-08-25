@@ -36,9 +36,16 @@ export const STAGE_PRESETS = {
       },
       {
         name: "finished (canon end-state)",
-        note: "rebuilt facilities at final step, destruction dressing hidden",
-        show: [141903, 140494, 152867, 140505, 162823, 140451, 162824, 140188, 140104, 140150, 141938, 142083, 144394],
-        hide: [138746, 139860, 140214, 152074],
+        note: "rebuilt facilities at final step; ruined outskirts stay (game never unloads dst layers)",
+        // patch layers + the dst (destruction) layers: deterministic snapshot
+        // regardless of what the user toggled before clicking the preset.
+        show: [141903, 140494, 152867, 140505, 162823, 140451, 162824, 140188, 140104, 140150, 141938, 142083, 144394,
+               138746, 139860, 140214, 152074],
+        // dst02/dst02_low/dst04/dst44 deliberately NOT hidden: runtime
+        // measurement showed every bg layer FilterOp=None (always loaded);
+        // the rebuild is only the master-internal steps. Hiding dst nuked
+        // 397 zone-wide props (Doma Castle ruins are never rebuilt).
+        hide: [],
         states: {
           show: [
             "sgbg_e3ec_f1_min2", "sgbg_e3ec_f1_min12",

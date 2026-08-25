@@ -52,6 +52,13 @@ body {
 .rail-item svg { width: 17px; height: 17px; flex: none; }
 .rail-item:hover { background: var(--bg2); color: var(--fg0); }
 .rail-item.active { background: var(--accent-soft); color: var(--accent); }
+.rail-grip {
+  margin-left: auto; display: flex; align-items: center; padding: 2px;
+  color: var(--fg2); opacity: 0; cursor: grab; transition: opacity .12s;
+}
+.rail-item:hover .rail-grip { opacity: .65; }
+.rail-grip:active { cursor: grabbing; }
+.rail-item.dragging { opacity: .4; }
 .rail-spacer { flex: 1; }
 .rail-status { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: var(--fg2); font-size: 12px; }
 .rail-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg2); transition: background .3s; }

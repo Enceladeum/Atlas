@@ -19,7 +19,7 @@ function parseHash() {
   const [pathPart, queryPart] = h.split("?");
   const seg = pathPart.split("/").filter(Boolean);
   const params = Object.fromEntries(new URLSearchParams(queryPart || ""));
-  const route = seg[0] || "sheets";
+  const route = seg[0] || document.querySelector(".rail-item")?.dataset.route || "sheets";
   if (route === "sheets" && seg[1]) params.sheet = decodeURIComponent(seg[1]);
   if (route === "territory" && seg[1]) params.tt = seg[1];
   if (route === "assets" && seg[1]) params.path = decodeURIComponent(seg.slice(1).join("/"));
@@ -130,5 +130,47 @@ document.getElementById("palette-btn").addEventListener("click", openPalette);
 window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); pal.classList.contains("hidden") ? openPalette() : closePalette(); }
 });
+
+
+// ---- rail order: drag grippers, persisted ----
+// Default puts territories first (most-used); saved order wins. Routes added
+// in future builds that aren't in the saved array append in DOM order.
+const RAIL_ORDER_KEY = "atlas.railOrder";
+const rail = document.getElementById("rail");
+const railSpacer = rail.querySelector(".rail-spacer");
+const railItems = () => [...rail.querySelectorAll(".rail-item")];
+{
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(RAIL_ORDER_KEY) || "null"); } catch { /* corrupt: fall through */ }
+  const order = Array.isArray(saved) && saved.length ? saved : ["territory", "assets", "sheets"];
+  const byRoute = new Map(railItems().map(a => [a.dataset.route, a]));
+  for (const r of order) { const a = byRoute.get(r); if (a) { rail.insertBefore(a, railSpacer); byRoute.delete(r); } }
+  for (const a of byRoute.values()) rail.insertBefore(a, railSpacer);
+}
+let railDrag = null;
+for (const a of railItems()) {
+  a.draggable = false; // anchors default draggable; only the grip arms it
+  const grip = el("span", { class: "rail-grip", title: "drag to reorder" });
+  grip.innerHTML = '<svg viewBox="0 0 24 24" width="10" height="14"><path d="M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/></svg>';
+  a.append(grip);
+  grip.addEventListener("pointerdown", () => { a.draggable = true; });
+  grip.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+  a.addEventListener("dragstart", (e) => {
+    railDrag = a; a.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", a.dataset.route);
+  });
+  a.addEventListener("dragend", () => {
+    a.classList.remove("dragging"); a.draggable = false; railDrag = null;
+    localStorage.setItem(RAIL_ORDER_KEY, JSON.stringify(railItems().map(x => x.dataset.route)));
+  });
+  a.addEventListener("dragover", (e) => {
+    if (!railDrag || railDrag === a) return;
+    e.preventDefault(); // required for the move cursor; reorder live
+    const r = a.getBoundingClientRect();
+    rail.insertBefore(railDrag, e.clientY < r.top + r.height / 2 ? a : a.nextSibling);
+  });
+}
+window.addEventListener("pointerup", () => railItems().forEach(x => { x.draggable = false; }));
 
 render();
