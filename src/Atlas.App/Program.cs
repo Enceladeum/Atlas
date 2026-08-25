@@ -63,6 +63,8 @@ static class Program
             };
             if (isDll) psi.ArgumentList.Add(file);
             psi.Environment["ATLAS_GAME"] = game;
+            psi.Environment["ATLAS_SETTINGS_SOURCE"] =
+                File.Exists(SettingsPath) ? SettingsPath : "(no settings.json; env/args)";
             // Data sources: env wins; settings.json fills the gaps.
             Forward(psi, "ATLAS_SCHEMA", "schemaPath", altEnv: "XIVTOOL_SCHEMA");
             Forward(psi, "ATLAS_LIBRARY", "libraryPath");

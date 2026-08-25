@@ -31,8 +31,16 @@ var gamePath = GetOpt("--game") ?? Environment.GetEnvironmentVariable("ATLAS_GAM
 var schemaDir = GetOpt("--schema") ?? Environment.GetEnvironmentVariable("ATLAS_SCHEMA") ?? Environment.GetEnvironmentVariable("XIVTOOL_SCHEMA");
 if (argv.Count == 0)
 {
-    Console.Error.WriteLine("usage: atlas <sheets|header|dump|extract|exists|lgb|library|territory|gui|mod> ...");
+    Console.Error.WriteLine("usage: atlas <sheets|header|dump|extract|exists|lgb|library|territory|gui|mod|version> ...");
     return 1;
+}
+if (argv[0] == "--version" || argv[0] == "version")
+{
+    var inf = System.Reflection.Assembly.GetExecutingAssembly()
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false);
+    var ver = inf.Length > 0 ? ((System.Reflection.AssemblyInformationalVersionAttribute)inf[0]).InformationalVersion : "unknown";
+    Console.WriteLine($"atlas build {ver}");
+    return 0;
 }
 var cmd = argv[0];
 if (cmd == "gui")

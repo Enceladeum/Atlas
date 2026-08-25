@@ -49,6 +49,11 @@ async function pollStatus() {
     const g = (m.game || "").split(/[\\/]/).filter(Boolean);
     label.textContent = g.length > 2 ? g[g.length - 3] : "connected";
     label.title = m.game;
+    const ver = document.getElementById("ver");
+    if (ver && m.version) {
+      ver.textContent = m.version;
+      ver.title = `build ${m.version}\ncontent: ${m.contentRoot || "?"}\nsettings: ${m.settingsSource || "?"}\ngame: ${m.game || "?"}`;
+    }
   } catch {
     conn.className = "rail-status err";
     label.textContent = "offline";

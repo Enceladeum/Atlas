@@ -111,6 +111,11 @@ run of `Atlas.App.exe` asks for the game folder and persists it to
 `%LOCALAPPDATA%\Atlas\settings.json`; `atlas gui` and later runs reuse it
 (`--game`/`ATLAS_GAME` always override; only picker-supplied paths persist).
 
+The live checkout (git) is `<your Atlas checkout>` - launch
+`dist\` from there; `<a local mirror>` is a cold mirror. Every
+binary bakes a UTC build stamp shown in the App title bar, the web rail badge,
+`atlas --version`, and `/api/meta` - a stale dist identifies itself.
+
 `settings.json` also accepts optional data-source keys — `schemaPath`
 (EXDSchema dir; names sheet columns, required for the territory picker),
 `libraryPath` (xivtool `dumps/library`; required for territory workspaces),

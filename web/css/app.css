@@ -336,3 +336,11 @@ table.mini td { padding: 3px 12px 3px 0; border-bottom: 1px solid var(--line-sof
 table.mini td a { color: var(--info); cursor: pointer; text-decoration: none; }
 table.mini td a:hover { text-decoration: underline; }
 .toolbar-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+
+.rail-ver {
+  font-size: 9px;
+  color: var(--fg-dim, #777);
+  font-family: var(--mono, monospace);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}

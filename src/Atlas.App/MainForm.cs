@@ -11,6 +11,9 @@ namespace Atlas.App;
 
 sealed class MainForm : Form
 {
+    static readonly string BuildStamp = System.Reflection.CustomAttributeExtensions
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+            System.Reflection.Assembly.GetEntryAssembly()!)?.InformationalVersion ?? "dev";
     readonly string _url;
     readonly Process? _child;
     readonly Label _status;
@@ -20,7 +23,7 @@ sealed class MainForm : Form
     {
         _url = url;
         _child = child;
-        Text = "Atlas";
+        Text = $"Atlas \u00b7 {BuildStamp}";
         BackColor = Color.FromArgb(11, 13, 16);
         ClientSize = new Size(1480, 940);
         MinimumSize = new Size(900, 600);
@@ -70,7 +73,7 @@ sealed class MainForm : Form
             _web.CoreWebView2.DocumentTitleChanged += (_, _) =>
             {
                 var t = _web.CoreWebView2.DocumentTitle;
-                Text = string.IsNullOrWhiteSpace(t) ? "Atlas" : t;
+                Text = (string.IsNullOrWhiteSpace(t) ? "Atlas" : t) + $" \u00b7 {BuildStamp}";
             };
             _web.CoreWebView2.Navigate(_url);
             _status.Visible = false;

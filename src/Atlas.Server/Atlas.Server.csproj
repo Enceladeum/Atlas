@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Atlas.Server</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <InformationalVersion>$([System.DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm'))Z</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Atlas.Core/Atlas.Core.csproj" />

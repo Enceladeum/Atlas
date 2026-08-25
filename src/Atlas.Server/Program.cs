@@ -85,6 +85,11 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 var app = builder.Build();
 
 // ---- meta ----
+// version = build stamp baked via csproj InformationalVersion; contentRoot +
+// settingsSource let the GUI say exactly WHICH dist and config are running.
+var buildStamp = System.Reflection.CustomAttributeExtensions
+    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+        System.Reflection.Assembly.GetEntryAssembly()!)?.InformationalVersion ?? "dev";
 app.MapGet("/api/meta", () => Results.Json(new
 {
     game = gamePath,
@@ -93,6 +98,9 @@ app.MapGet("/api/meta", () => Results.Json(new
     work = workDir,
     web = webDir,
     paths = pathsFile,
+    version = buildStamp,
+    contentRoot = AppContext.BaseDirectory,
+    settingsSource = Environment.GetEnvironmentVariable("ATLAS_SETTINGS_SOURCE"),
     generator = "Atlas.Server"
 }));
 
