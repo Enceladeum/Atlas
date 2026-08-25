@@ -3,7 +3,7 @@
 // (CONTRACT.md) - Blender/three.js import + bbox overlap with the Pcb collision
 // OBJ for the same territory.
 //
-// v1 scope: bg.lgb only (planmap etc. later, flag-gated). BGPart instances whose
+// v1 scope: bg.lgb + terrain bgplates (planmap etc. later, flag-gated). BGPart instances whose
 // asset ends .mdl become glTF nodes referencing per-asset-path deduped meshes
 // (LOD selectable, default 0, Main meshes only). SharedGroup (.sgb) instances are
 // resolved ONE level deep: the group's BgPart children get child nodes with their
@@ -17,6 +17,14 @@
 // (mip capped at MaxTexDim) and wired as baseColorTexture (alphaMode MASK for
 // foliage cutouts); output becomes map-{label}-tex.gltf/.bin. The untextured
 // default filenames and bytes stay golden-identical (ADDITIVE, CONTRACT).
+//
+// Terrain (opts.Terrain, default on): {zoneBase}/bgplate/terrain.tera - 52-byte
+// header (version 0x01000003 u32, plateCount u32, plateSize u32 yalms, rest
+// reserved) then plateCount i16 (x,y) cell pairs @+52. Plate i pairs with
+// {i:04}.mdl in the same folder; world = (plateSize*(x+.5), 0, plateSize*(y+.5)),
+// translation only (height is baked into the plate mesh). Plates flow through
+// the same mesh/material caches as bg parts (textured mode included); nodes go
+// under a "terrain" group with extras lgbFile:"terrain", instanceId=plate index.
 //
 // Transform convention == the Pcb path (keep in sync with TerritoryDump):
 // local = S*Rx*Ry*Rz*T (PcbParser.LocalMatrix, row-vector, euler radians X then
@@ -55,6 +63,8 @@ public sealed class ComposeOptions
     /// <summary>Textured: use the smallest mip that fits within this dimension
     /// (keeps whole-map exports web-viewable). 0 = always mip 0. Default 1024.</summary>
     public int MaxTexDim = 1024;
+    /// <summary>Include terrain bgplates ({zoneBase}/bgplate/terrain.tera). Default true.</summary>
+    public bool Terrain = true;
 }
 
 public sealed class ComposeSummary
@@ -63,6 +73,7 @@ public sealed class ComposeSummary
     public string Label = "", LevelDir = "", GltfPath = "", BinPath = "";
     public int Layers, Instances, SgbGroups, SgbParts, SgbNestedSkipped, OtherSkipped, FailedMdl, UniqueMeshes;
     public int TexMaterials, TexFiles, TexFailed;   // textured mode only
+    public int TerrainPlates, TerrainMissing;       // terrain bgplates (missing = plate mdl absent/failed)
 }
 
 public static class ComposeOps
@@ -279,6 +290,41 @@ public static class ComposeOps
                         sum.OtherSkipped++;
                         break;
                 }
+            }
+        }
+
+        // ---- terrain bgplates: {zoneBase}/bgplate/terrain.tera + {i:04}.mdl ----
+        if (opts.Terrain && levelDir.EndsWith("/level"))
+        {
+            var bgplateDir = levelDir[..^"/level".Length] + "/bgplate";
+            var tera = gd.GetFile($"{bgplateDir}/terrain.tera");
+            if (tera == null) Log("terrain: no bgplate/terrain.tera (indoor or bgpart-only level)");
+            else
+            {
+                var td = tera.Data;
+                var plateCount = td.Length >= 52 ? BitConverter.ToInt32(td, 4) : 0;
+                float plateSize = td.Length >= 52 ? BitConverter.ToUInt32(td, 8) : 0f;
+                var terrainNode = -1;
+                for (var i = 0; i < plateCount && 52 + i * 4 + 4 <= td.Length; i++)
+                {
+                    var px = BitConverter.ToInt16(td, 52 + i * 4);
+                    var py = BitConverter.ToInt16(td, 52 + i * 4 + 2);
+                    var asset = $"{bgplateDir}/{i:d4}.mdl";
+                    var mesh = GetMesh(asset);
+                    if (mesh == null) { sum.TerrainMissing++; continue; }
+                    if (terrainNode < 0) { terrainNode = w.AddNode("terrain"); w.AddChild(root, terrainNode); }
+                    var n = w.AddNode($"plate_{i:d4}",
+                        new Vector3(plateSize * (px + 0.5f), 0f, plateSize * (py + 0.5f)), null, null,
+                        mesh, new Dictionary<string, object?>
+                        {
+                            ["territoryId"] = terrId, ["lgbFile"] = "terrain", ["layerId"] = 0u,
+                            ["instanceId"] = (uint)i, ["assetPath"] = asset,
+                        });
+                    w.AddChild(terrainNode, n);
+                    sum.TerrainPlates++;
+                }
+                Log($"terrain: {sum.TerrainPlates} plates (cell {plateSize}) "
+                    + (sum.TerrainMissing > 0 ? $"+ {sum.TerrainMissing} geometry-less " : "") + $"from {bgplateDir}");
             }
         }
 

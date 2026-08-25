@@ -508,7 +508,12 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
     var dir = TtDir(tt);
     var stem = textured == 1 ? $"map-{tt}-tex" : $"map-{tt}";
     var gltf = Path.Combine(dir, $"{stem}.gltf");
-    if (refresh == 1 || !File.Exists(gltf))
+    // Cache-buster: composed-map format version (2 = terrain bgplates). Maps
+    // built by an older server lack the marker and are rebuilt once.
+    const string MapFormatVersion = "2";
+    var genFile = Path.Combine(dir, $"{stem}.gen");
+    if (refresh == 1 || !File.Exists(gltf)
+        || !File.Exists(genFile) || File.ReadAllText(genFile).Trim() != MapFormatVersion)
     {
         Directory.CreateDirectory(dir);
         await WithEnv<object?>(e =>
@@ -516,6 +521,7 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
             ComposeOps.MapGltf(e.Game, tt.ToString(), dir, new ComposeOptions { Textured = textured == 1 });
             return null;
         });
+        File.WriteAllText(genFile, MapFormatVersion);
     }
     return File.Exists(gltf)
         ? Results.Stream(File.OpenRead(gltf), "model/gltf+json")

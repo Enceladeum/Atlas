@@ -27,6 +27,31 @@ export class Viewport {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
 
+    // Wheel zoom: OrbitControls' dolly multiplies distance-to-target by a
+    // constant factor, so approach speed decays to zero exactly when you want
+    // to inspect detail. Replaced: translate the camera along the ray through
+    // the cursor pixel with a floored step (never stalls, passes through
+    // surfaces), then re-seat the orbit pivot ahead of the camera. Orientation
+    // is untouched, so the point under the cursor stays under the cursor.
+    this.controls.enableZoom = false;
+    this._wheel = (e) => {
+      e.preventDefault();
+      const r = this.renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - r.left) / r.width) * 2 - 1,
+        -((e.clientY - r.top) / r.height) * 2 + 1);
+      this._raycaster.setFromCamera(ndc, this.camera);
+      const dir = this._raycaster.ray.direction;
+      const dist = this.camera.position.distanceTo(this.controls.target);
+      const step = Math.max(dist * 0.22, 2.5) * (e.deltaY < 0 ? 1 : -1.25);
+      this.camera.position.addScaledVector(dir, step);
+      const view = new THREE.Vector3();
+      this.camera.getWorldDirection(view);
+      this.controls.target.copy(this.camera.position)
+        .addScaledVector(view, Math.max(dist - step, 6));
+    };
+    this.renderer.domElement.addEventListener("wheel", this._wheel, { passive: false });
+
     const hemi = new THREE.HemisphereLight(0xcfd8e3, 0x2a2620, 1.05);
     const dir = new THREE.DirectionalLight(0xfff2d8, 1.4);
     dir.position.set(0.6, 1, 0.35);

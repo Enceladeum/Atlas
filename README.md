@@ -64,6 +64,7 @@ surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps
                                              # (map-1345.gltf/.bin, layers as groups,
                                              #  identity quadruple in node extras)
     atlas mod Map gltf 1345 --out out/ --textured --texsize 1024
+    atlas mod Map gltf 128 --out out/ --no-terrain  # skip terrain bgplates (on by default)
                                              # textured variant: map-1345-tex.gltf/.bin
                                              # + tex/*.png (diffuse maps, mip-capped)
     atlas mod Library where tre --tt 919     # asset-usage query: every placement whose

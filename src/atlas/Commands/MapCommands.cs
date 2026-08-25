@@ -9,6 +9,7 @@
 //   --textured  export diffuse PNGs under <out>/tex/ + wire baseColorTexture;
 //               output becomes map-<tt>-tex.gltf (default outputs stay golden)
 //   --texsize   textured: cap texture dimension via mip pick (default 1024, 0 = mip 0)
+//   --no-terrain  skip terrain bgplates (terrain.tera; included by default)
 
 using Atlas.Core;
 using Atlas.Core.Compose;
@@ -17,7 +18,7 @@ namespace Atlas.Cli.Commands;
 
 public static class MapCommands
 {
-    const string Usage = "usage: atlas mod Map gltf <territoryId|bg-level-dir> --out <dir> [--layers id1,id2] [--lod 0] [--textured] [--texsize 1024]";
+    const string Usage = "usage: atlas mod Map gltf <territoryId|bg-level-dir> --out <dir> [--layers id1,id2] [--lod 0] [--textured] [--texsize 1024] [--no-terrain]";
 
     public static int Run(XivEnv env, List<string> argv)
     {
@@ -49,6 +50,7 @@ public static class MapCommands
                 var lodArg = Opt("--lod");
                 var texSizeArg = Opt("--texsize");
                 var textured = Flag("--textured");
+                var noTerrain = Flag("--no-terrain");
                 if (argv.Count < 2 || outDir == null) { Console.Error.WriteLine(Usage); return 1; }
                 var opts = new ComposeOptions();
                 if (lodArg != null)
@@ -68,6 +70,7 @@ public static class MapCommands
                     }
                 }
                 opts.Textured = textured;
+                opts.Terrain = !noTerrain;
                 if (texSizeArg != null)
                 {
                     if (!textured) { Console.Error.WriteLine("error: --texsize requires --textured"); return 1; }
@@ -83,7 +86,7 @@ public static class MapCommands
                     Console.WriteLine(
                         $"map-{s.Label}: {s.Instances} bg instances, {s.UniqueMeshes} unique meshes, " +
                         $"{s.SgbGroups} sgb groups ({s.SgbParts} parts resolved one level, {s.SgbNestedSkipped} nested sgb skipped), " +
-                        $"{s.OtherSkipped} other instances skipped, {s.FailedMdl} mdl failed, {s.Layers} layers{texInfo} -> {s.GltfPath}");
+                        $"{s.OtherSkipped} other instances skipped, {s.FailedMdl} mdl failed, {s.TerrainPlates} terrain plates, {s.Layers} layers{texInfo} -> {s.GltfPath}");
                     return 0;
                 }
                 catch (Exception e)
