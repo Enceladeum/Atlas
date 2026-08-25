@@ -28,8 +28,31 @@ public static class ExdOps
         for (var i = 0; i < sheet.Columns.Count; i++)
         {
             var nm = names != null ? "  " + names.NameOfRawIndex(i) : "";
-            w.WriteLine($"  [{i,3}] {sheet.Columns[i].Type,-12} @0x{sheet.Columns[i].Offset:X3}{nm}");
+            var lt = names?.TargetsOfRawIndex(i) ?? [];
+            var link = lt.Length > 0 ? "  -> " + string.Join("|", lt) : "";
+            w.WriteLine($"  [{i,3}] {sheet.Columns[i].Type,-12} @0x{sheet.Columns[i].Offset:X3}{nm}{link}");
         }
+    }
+
+    /// <summary>
+    /// Link columns of a sheet per EXDSchema: CSV-header column name -> target
+    /// sheet names (conditional links = union of case targets). Targets that are
+    /// not real sheets are dropped. Empty when no schema.
+    /// </summary>
+    public static Dictionary<string, string[]> SheetLinks(XivEnv env, string sheetName)
+    {
+        var res = new Dictionary<string, string[]>();
+        var raw = env.Game.Excel.GetRawSheet(sheetName);
+        var schema = SchemaNames.TryLoad(env.SchemaDir, sheetName, raw);
+        if (schema?.Targets == null) return res;
+        var real = new HashSet<string>(env.Game.Excel.SheetNames, StringComparer.Ordinal);
+        for (var k = 0; k < schema.Names.Length; k++)
+        {
+            if (schema.Targets[k] is not { Length: > 0 } t) continue;
+            var kept = t.Where(real.Contains).ToArray();
+            if (kept.Length > 0) res.TryAdd(schema.Names[k], kept);
+        }
+        return res;
     }
 
     /// <summary>Full CSV dump. Returns rows written.</summary>

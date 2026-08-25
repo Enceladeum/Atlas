@@ -23,8 +23,16 @@ export const api = {
     const qs = q.toString();
     return tget(`/api/sheet/${encodeURIComponent(name)}.csv` + (qs ? "?" + qs : ""));
   },
+  sheetLinks: (name) => jget(`/api/sheet/${encodeURIComponent(name)}/links`),
   sheetCsvUrl: (name, lang) =>
     `${BASE}/api/sheet/${encodeURIComponent(name)}.csv` + (lang ? `?lang=${lang}` : ""),
+  paths: ({ prefix, q, limit } = {}) => {
+    const p = new URLSearchParams();
+    if (prefix) p.set("prefix", prefix);
+    if (q) p.set("q", q);
+    if (limit) p.set("limit", limit);
+    return jget("/api/paths?" + p.toString());
+  },
   exists: (path) => jget(`/api/exists?path=${encodeURIComponent(path)}`),
   extractUrl: (path) => `${BASE}/api/extract?path=${encodeURIComponent(path)}`,
   mdlInfo: (path) => jget(`/api/mdl/info?path=${encodeURIComponent(path)}`),

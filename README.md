@@ -29,6 +29,8 @@ surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps
 
     atlas sheets                             # list all EXD sheets
     atlas header TerritoryType               # column layout of a sheet
+                                             #  (link columns show -> Target per
+                                             #  EXDSchema)
     atlas dump Emote --out emote.csv         # sheet -> CSV
     atlas extract <gamepath> --out f         # raw file from sqpack
     atlas territory 1345 --out ws --library <dumps/library> --collision

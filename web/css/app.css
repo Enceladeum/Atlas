@@ -149,6 +149,10 @@ table.grid tr:hover td:first-child { background: var(--bg3); }
 table.grid td { color: var(--fg0); }
 table.grid td.num { color: #b8c4a9; }
 table.grid td.empty { color: var(--fg2); }
+table.grid td a.cell-link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent-dim); }
+table.grid td a.cell-link:hover { border-bottom-style: solid; }
+table.grid tr.hl td { background: var(--accent-soft); }
+table.grid tr.hl td:first-child { background: var(--bg3); color: var(--accent); }
 
 .banner {
   display: flex; align-items: center; gap: 10px; padding: 6px 14px;

@@ -12,8 +12,15 @@ public sealed class SchemaNames
 {
     public required string[] Names;        // per output column, in offset-sorted order
     public required int[] OffsetOrder;     // output column -> raw EXH column index
+    public string[][]? Targets;            // per output column, link target sheets ([] = not a link)
     private readonly Dictionary<int, string> _byRaw = new();
     public string NameOfRawIndex(int i) => _byRaw.TryGetValue(i, out var n) ? n : $"col{i}";
+    public string[] TargetsOfRawIndex(int i)
+    {
+        if (Targets == null) return [];
+        for (var k = 0; k < OffsetOrder.Length; k++) if (OffsetOrder[k] == i) return Targets[k];
+        return [];
+    }
 
     public static SchemaNames? TryLoad(string? dir, string sheet, RawExcelSheet raw, Action<string>? log = null)
     {
@@ -24,7 +31,8 @@ public sealed class SchemaNames
         {
             var fields = ParseFields(File.ReadAllLines(path));
             var flat = new List<string>();
-            foreach (var f in fields) Flatten(f, null, flat);
+            var flatTargets = new List<string[]>();
+            foreach (var f in fields) Flatten(f, null, flat, flatTargets);
 
             // offset-sorted raw column order; packed bools at same offset sort by bit (Type enum order)
             var order = Enumerable.Range(0, raw.Columns.Count)
@@ -36,7 +44,7 @@ public sealed class SchemaNames
                 log?.Invoke($"warning: schema fields ({flat.Count}) != columns ({order.Length}) for {sheet}; falling back to raw order");
                 return null;
             }
-            var res = new SchemaNames { Names = flat.ToArray(), OffsetOrder = order };
+            var res = new SchemaNames { Names = flat.ToArray(), OffsetOrder = order, Targets = flatTargets.ToArray() };
             for (var k = 0; k < order.Length; k++) res._byRaw[order[k]] = flat[k];
             return res;
         }
@@ -53,20 +61,28 @@ public sealed class SchemaNames
         public bool IsArray;
         public int Count = 1;
         public List<Field>? Sub;
+        public List<string>? Targets;  // link target sheets (targets: [...] or condition cases union)
     }
 
-    static void Flatten(Field f, string? prefix, List<string> outNames)
+    static readonly string[] NoTargets = [];
+
+    static void Flatten(Field f, string? prefix, List<string> outNames, List<string[]> outTargets)
     {
         var baseName = (prefix ?? "") + (f.Name ?? "Unknown");
-        if (!f.IsArray) { outNames.Add(baseName); return; }
+        var own = f.Targets is { Count: > 0 } t ? t.ToArray() : NoTargets;
+        if (!f.IsArray) { outNames.Add(baseName); outTargets.Add(own); return; }
         for (var i = 0; i < f.Count; i++)
         {
-            if (f.Sub == null || f.Sub.Count == 0) { outNames.Add($"{baseName}[{i}]"); continue; }
-            if (f.Sub.Count == 1 && f.Sub[0].Name == null && !f.Sub[0].IsArray) { outNames.Add($"{baseName}[{i}]"); continue; }
+            if (f.Sub == null || f.Sub.Count == 0) { outNames.Add($"{baseName}[{i}]"); outTargets.Add(own); continue; }
+            if (f.Sub.Count == 1 && f.Sub[0].Name == null && !f.Sub[0].IsArray)
+            {
+                var et = f.Sub[0].Targets is { Count: > 0 } st ? st.ToArray() : own;
+                outNames.Add($"{baseName}[{i}]"); outTargets.Add(et); continue;
+            }
             foreach (var sf in f.Sub)
             {
-                if (sf.Name == null && !sf.IsArray) outNames.Add($"{baseName}[{i}]");
-                else Flatten(sf, $"{baseName}[{i}].", outNames);
+                if (sf.Name == null && !sf.IsArray) { outNames.Add($"{baseName}[{i}]"); outTargets.Add(sf.Targets is { Count: > 0 } lt ? lt.ToArray() : NoTargets); }
+                else Flatten(sf, $"{baseName}[{i}].", outNames, outTargets);
             }
         }
     }
@@ -129,6 +145,21 @@ public sealed class SchemaNames
             case "name": f.Name = val; break;
             case "type": if (val == "array") f.IsArray = true; break;
             case "count": f.Count = int.Parse(val); break;
+            case "targets":
+                AddTargets(f, val);
+                break;
+            case "condition":
+                // multi-target link switched on another column: union every case's targets
+                while (i < lines.Length &&
+                       (string.IsNullOrWhiteSpace(lines[i]) ||
+                        lines[i].Length - lines[i].TrimStart().Length > keyIndent))
+                {
+                    var cl = lines[i].Trim();
+                    var bi = cl.IndexOf(": [", StringComparison.Ordinal);
+                    if (bi > 0) AddTargets(f, cl.Substring(bi + 2));
+                    i++;
+                }
+                break;
             case "fields":
                 f.Sub = ParseList(lines, ref i, IndentOf(lines, i));
                 break;
@@ -140,6 +171,19 @@ public sealed class SchemaNames
                         lines[i].Length - lines[i].TrimStart().Length > keyIndent))
                     i++;
                 break;
+        }
+    }
+
+    /// <summary>Parse an inline flow list "[A, B]" and union into f.Targets.</summary>
+    static void AddTargets(Field f, string flow)
+    {
+        var v = flow.Trim();
+        if (!v.StartsWith('[') || !v.EndsWith(']')) return;
+        f.Targets ??= new List<string>();
+        foreach (var part in v[1..^1].Split(','))
+        {
+            var name = part.Trim();
+            if (name.Length > 0 && !f.Targets.Contains(name)) f.Targets.Add(name);
         }
     }
 }

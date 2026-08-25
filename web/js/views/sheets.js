@@ -58,10 +58,10 @@ export async function renderSheets(view, params) {
       el("div", { class: "hint" }, "Every sheet here is also `atlas dump <name>` on the CLI")));
     return;
   }
-  await renderSheet(main, params.sheet, params.lang || "");
+  await renderSheet(main, params.sheet, params.lang || "", params.row);
 }
 
-async function renderSheet(main, name, lang) {
+async function renderSheet(main, name, lang, rowId) {
   crumbs("Sheets", name);
   main.innerHTML = "";
 
@@ -95,29 +95,58 @@ async function renderSheet(main, name, lang) {
 
   try {
     const t0 = performance.now();
-    const csv = await api.sheetCsv(name, { lang, max: PREVIEW_ROWS });
+    const [csv, links] = await Promise.all([
+      api.sheetCsv(name, { lang, max: PREVIEW_ROWS }),
+      api.sheetLinks(name).catch(() => ({})),
+    ]);
     const rows = parseCsv(csv);
     const header = rows.shift() || [];
     load.remove();
     const grid = new VGrid(gridHost);
+    // EXDSchema link columns -> clickable cross-references
+    const colTargets = header.map(h => links[h] || null);
+    const lq = lang ? `lang=${lang}&` : "";
+    grid.linkFor = (c, v) => {
+      const t = colTargets[c];
+      if (!t || !/^\d+$/.test(v)) return null;
+      return { href: `#/sheets/${t[0]}?${lq}row=${v}`, title: "\u2192 " + t.join(" | ") };
+    };
     grid.setData(header, rows);
     const ms = Math.round(performance.now() - t0);
     meta.textContent = `${header.length} cols · ${rows.length}${rows.length >= PREVIEW_ROWS - 1 ? "+" : ""} rows · ${ms} ms`;
+    const jump = (rs) => {
+      const i = rs.findIndex(r => r[0] === rowId);
+      if (i >= 0) grid.scrollToRow(i);
+      return i >= 0;
+    };
+    let needFull = rowId != null && !jump(rows) && rows.length >= PREVIEW_ROWS - 1;
+    const loadAll = async (banner) => {
+      const full = parseCsv(await api.sheetCsv(name, { lang }));
+      full.shift();
+      grid.setData(header, full);
+      meta.textContent = `${header.length} cols \u00b7 ${full.length} rows`;
+      banner?.remove();
+      return full;
+    };
     if (rows.length >= PREVIEW_ROWS - 1) {
       const banner = el("div", { class: "banner" },
         `Showing the first ${PREVIEW_ROWS - 1} rows. `,
         el("a", { onclick: async () => {
-          banner.textContent = "Loading full sheet…";
-          try {
-            const full = parseCsv(await api.sheetCsv(name, { lang }));
-            full.shift();
-            grid.setData(header, full);
-            meta.textContent = `${header.length} cols · ${full.length} rows`;
-            banner.remove();
-          } catch (e) { toast("Full load failed: " + e.message, "err"); }
+          banner.textContent = "Loading full sheet\u2026";
+          try { await loadAll(banner); }
+          catch (e) { toast("Full load failed: " + e.message, "err"); }
         } }, "Load all rows"),
         " or use Export CSV for the complete dump.");
       bannerSlot.append(banner);
+      if (needFull) {
+        banner.textContent = `Loading full sheet for row ${rowId}\u2026`;
+        try {
+          const full = await loadAll(banner);
+          if (!jump(full)) toast(`Row ${rowId} not found in ${name}`, "err");
+        } catch (e) { toast("Full load failed: " + e.message, "err"); }
+      }
+    } else if (rowId != null && !rows.some(r => r[0] === rowId)) {
+      toast(`Row ${rowId} not found in ${name}`, "err");
     }
   } catch (e) {
     load.remove();

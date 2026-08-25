@@ -89,7 +89,9 @@ export async function renderAssets(view, params) {
     try {
       const r = await paths({ q, limit: 300 });
       list.innerHTML = "";
-      count.textContent = `${r.hits.length}${r.truncated ? "+" : ""} matches`;
+      count.textContent = r.total != null
+        ? `${r.total.toLocaleString()} matches${r.truncated ? ` (showing ${r.hits.length})` : ""}`
+        : `${r.hits.length}${r.truncated ? "+" : ""} matches`;
       for (const f of r.hits) {
         list.append(el("div", {
           class: "list-item", title: f,

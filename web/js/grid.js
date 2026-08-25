@@ -22,6 +22,15 @@ export class VGrid {
     container.append(this.wrap);
     this.wrap.addEventListener("scroll", () => this.renderWindow());
     this._first = -1; this._last = -1;
+    this.linkFor = null;   // optional (colIndex, value) => ({ href, title }) | null
+    this.hlRow = -1;       // highlighted row index (scrollToRow)
+  }
+
+  scrollToRow(r) {
+    this.hlRow = r;
+    const vh = this.wrap.clientHeight || 400;
+    this.wrap.scrollTop = Math.max(0, r * ROW_H - vh / 2 + ROW_H);
+    this.renderWindow(true);
   }
 
   setData(header, rows) {
@@ -44,6 +53,7 @@ export class VGrid {
     this.inner.style.height = (rows.length * ROW_H + ROW_H + 2) + "px";
     this.table.style.width = this.colW.reduce((a, b) => a + b, 0) + "px";
     this._first = -1; this._last = -1;
+    this.hlRow = -1;
     this.wrap.scrollTop = 0;
     this.renderWindow(true);
   }
@@ -60,12 +70,16 @@ export class VGrid {
     const spacer = el("tr", { style: `height:${first * ROW_H}px` });
     this.tbody.append(spacer);
     for (let r = first; r < last; r++) {
-      const tr = el("tr");
+      const tr = el("tr", r === this.hlRow ? { class: "hl" } : {});
       const row = this.rows[r];
       for (let c = 0; c < this.header.length; c++) {
         const v = row[c] ?? "";
         const cls = v === "" ? "empty" : /^-?[\d.]+$/.test(v) ? "num" : "";
-        tr.append(el("td", { class: cls, style: `width:${this.colW[c]}px; min-width:${this.colW[c]}px`, title: v.length > 40 ? v : null }, v === "" ? "·" : v));
+        const td = el("td", { class: cls, style: `width:${this.colW[c]}px; min-width:${this.colW[c]}px`, title: v.length > 40 ? v : null });
+        const lk = v !== "" && this.linkFor ? this.linkFor(c, v) : null;
+        if (lk) td.append(el("a", { class: "cell-link", href: lk.href, title: lk.title }, v));
+        else td.textContent = v === "" ? "\u00b7" : v;
+        tr.append(td);
       }
       this.tbody.append(tr);
     }

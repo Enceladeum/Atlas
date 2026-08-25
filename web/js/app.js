@@ -61,7 +61,7 @@ setInterval(pollStatus, 15000);
 const pal = document.getElementById("palette");
 const palInput = document.getElementById("palette-input");
 const palResults = document.getElementById("palette-results");
-let palItems = [], palSel = 0, sheetCache = null;
+let palItems = [], palSel = 0, sheetCache = null, palSeq = 0;
 
 function openPalette() {
   pal.classList.remove("hidden");
@@ -86,12 +86,29 @@ async function updatePalette(q) {
   }
   palItems = out; palSel = 0;
   palResults.innerHTML = "";
-  if (!out.length) { palResults.append(el("div", { class: "pal-empty" }, "No matches")); return; }
+  if (!out.length) palResults.append(el("div", { class: "pal-empty" }, "No matches"));
   out.forEach((it, i) => {
     const d = el("div", { class: "pal-item" + (i === palSel ? " sel" : ""), onclick: () => { location.hash = it.go; closePalette(); } },
       el("span", { class: "tag" }, it.tag), it.label);
     palResults.append(d);
   });
+
+  // live global asset-path search (needs --paths; quiet-fail)
+  const seq = ++palSeq;
+  if (q.length >= 3) {
+    api.paths({ q, limit: 6 }).then(r => {
+      if (seq !== palSeq || !r.hits?.length) return;
+      palResults.querySelector(".pal-empty")?.remove();
+      const wasEmpty = palItems.length === 0;
+      for (const f of r.hits) {
+        const it = { tag: "asset", label: f, go: `#/assets/${encodeURIComponent(f)}` };
+        palItems.push(it);
+        palResults.append(el("div", { class: "pal-item", onclick: () => { location.hash = it.go; closePalette(); } },
+          el("span", { class: "tag" }, "asset"), f));
+      }
+      if (wasEmpty) palResults.children[0]?.classList.add("sel");
+    }).catch(() => {});
+  }
 }
 palInput.addEventListener("input", debounce(() => updatePalette(palInput.value), 100));
 palInput.addEventListener("keydown", (e) => {

@@ -106,6 +106,9 @@ app.MapGet("/api/sheet/{name}/header", async (string name) =>
     return Results.Text(sw.ToString(), "text/plain; charset=utf-8");
 });
 
+app.MapGet("/api/sheet/{name}/links", async (string name) =>
+    Results.Json(await WithEnv(e => ExdOps.SheetLinks(e, name))));
+
 app.MapGet("/api/sheet/{name}.csv", async (string name, string? lang, int? max) =>
 {
     var sw = new StringWriter();
@@ -546,18 +549,20 @@ app.MapGet("/api/paths", async (string? prefix, string? q, int? limit) =>
 
     if (!string.IsNullOrEmpty(q))
     {
-        // bounded substring scan (optionally within a prefix)
+        // substring scan (optionally within a prefix); full pass for the total,
+        // hits capped at lim
         var hits = new List<string>(lim);
+        var total = 0;
         foreach (var s in idx)
         {
             if (prefix != null && !s.StartsWith(prefix, StringComparison.Ordinal)) continue;
             if (s.Contains(q, StringComparison.OrdinalIgnoreCase))
             {
-                hits.Add(s);
-                if (hits.Count >= lim) break;
+                total++;
+                if (hits.Count < lim) hits.Add(s);
             }
         }
-        return Results.Ok(new { mode = "search", q, prefix, hits, truncated = hits.Count >= lim });
+        return Results.Ok(new { mode = "search", q, prefix, hits, total, truncated = total > hits.Count });
     }
 
     // folder listing: distinct immediate children under prefix
