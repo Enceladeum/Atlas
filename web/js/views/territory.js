@@ -166,17 +166,36 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   let mapOn = true, colOn = false, colLoaded = false;
   // textured is the default view; the toggle is remembered across sessions
   let texOn = localStorage.getItem("atlas.textured") !== "0";
+  let skyOn = localStorage.getItem("atlas.sky") !== "0";
+  let waterOn = localStorage.getItem("atlas.water") !== "0";
   const mapChk = el("input", { type: "checkbox", checked: "" });
   const colChk = el("input", { type: "checkbox" });
   const texChk = el("input", { type: "checkbox" });
+  const skyChk = el("input", { type: "checkbox" });
+  const waterChk = el("input", { type: "checkbox" });
   texChk.checked = texOn;
+  skyChk.checked = skyOn;
+  waterChk.checked = waterOn;
   overlays.append(
     el("h3", {}, "Overlays"),
     el("label", { class: "vp-row" }, mapChk, el("span", { class: "n" }, "Map visual (glTF)")),
     el("label", { class: "vp-row", title: `Compose with diffuse textures (map-${tt}-tex.gltf; first compose exports the PNGs, cached afterwards)` },
       texChk, el("span", { class: "n" }, "Textured")),
+    el("label", { class: "vp-row", title: "In-model water surfaces (harbors, rivers, terrain oceans) as translucent planes" },
+      waterChk, el("span", { class: "n" }, "Water")),
+    el("label", { class: "vp-row", title: "Gradient sky dome + horizon fog" },
+      skyChk, el("span", { class: "n" }, "Sky")),
     el("label", { class: "vp-row" }, colChk, el("span", { class: "n" }, "Collision (OBJ)")),
   );
+  vp.setSkyVisible(skyOn);
+  skyChk.addEventListener("change", () => {
+    skyOn = skyChk.checked; localStorage.setItem("atlas.sky", skyOn ? "1" : "0");
+    vp.setSkyVisible(skyOn);
+  });
+  waterChk.addEventListener("change", () => {
+    waterOn = waterChk.checked; localStorage.setItem("atlas.water", waterOn ? "1" : "0");
+    vp.setWaterVisible(waterOn);
+  });
   texChk.addEventListener("change", async () => {
     const want = texChk.checked;
     texChk.disabled = true;
@@ -262,6 +281,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     await ensureComposed(textured, force);
     if (!ws.files.includes(gltfName)) ws.files.push(gltfName);
     const layers = await vp.loadMapGltf(api.territoryFileUrl(tt, gltfName), undefined, { fit: !mapLoaded });
+    if (!waterOn) vp.setWaterVisible(false);
     mapLoaded = true;
     vp.setMapVisible(mapOn);
     buildLayersPanel(layers);
@@ -394,6 +414,9 @@ async function renderWorkspace(main, tt, info, refresh = false) {
             const id = ly.meta?.layerId;
             return show.has(id) ? true : hide.has(id) ? false : null;
           });
+          if (p.resetStates) vp.applyStates(null, null, true);
+          if (p.states) vp.applyStates(new Set(p.states.show), new Set(p.states.hide));
+          if (!waterOn) vp.setWaterVisible(false);   // state re-show must not resurrect hidden water
           if (sel) sel.value = "";
         });
         box.append(b);

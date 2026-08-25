@@ -20,6 +20,28 @@ export class Viewport {
     this.scene.background = new THREE.Color(0x0b0d10);
     this.scene.fog = new THREE.Fog(0x0b0d10, 600, 2400);
 
+    // Sky dome: camera-following inward-facing sphere with a vertical
+    // horizon->zenith gradient (radius inside the far plane; depthWrite off so
+    // it never occludes). setSkyVisible toggles it and swaps background+fog
+    // color so distant geometry fades into the horizon instead of the void.
+    this._skyColors = { horizon: 0x8fa8bf, zenith: 0x36527a, off: 0x0b0d10 };
+    {
+      const geo = new THREE.SphereGeometry(5200, 24, 12);
+      const mat = new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false, fog: false,
+        uniforms: {
+          horizon: { value: new THREE.Color(this._skyColors.horizon) },
+          zenith: { value: new THREE.Color(this._skyColors.zenith) },
+        },
+        vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+        fragmentShader: "varying vec3 vDir; uniform vec3 horizon; uniform vec3 zenith; void main(){ float t = clamp(vDir.y*1.6, 0.0, 1.0); vec3 below = horizon*0.55; vec3 c = vDir.y < 0.0 ? mix(horizon, below, clamp(-vDir.y*3.0,0.0,1.0)) : mix(horizon, zenith, t); gl_FragColor = vec4(c,1.0); }",
+      });
+      this._skyDome = new THREE.Mesh(geo, mat);
+      this._skyDome.renderOrder = -1;
+      this._skyDome.visible = false;
+      this.scene.add(this._skyDome);
+    }
+
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 6000);
     this.camera.position.set(120, 140, 120);
 
@@ -112,6 +134,7 @@ export class Viewport {
       if (!this._alive) return;
       requestAnimationFrame(loop);
       this.controls.update();
+      if (this._skyDome.visible) this._skyDome.position.copy(this.camera.position);
       if (this._marker) {
         const t = (performance.now() - this._markerT0) / 1000;
         this._marker.rotation.y = t * 2.2;
@@ -184,6 +207,35 @@ export class Viewport {
   }
 
   setMapVisible(v) { if (this.mapRoot) this.mapRoot.visible = v; }
+
+  setSkyVisible(v) {
+    this._skyDome.visible = v;
+    const bg = v ? this._skyColors.horizon : this._skyColors.off;
+    this.scene.background.set(bg);
+    this.scene.fog.color.set(bg);
+  }
+
+  // Water surfaces: compose emits MeshType.Water geometry as sibling nodes
+  // tagged userData.water (shared translucent material). Toggle en masse.
+  setWaterVisible(v) {
+    if (!this.mapRoot) return;
+    this.mapRoot.traverse(o => { if (o.userData && o.userData.water) o.visible = v; });
+  }
+
+  // Quest-progression state filter: compose tags every part under a nested
+  // sgb with userData.sgbState (depth-1 nested stem, e.g. 759 facility steps
+  // min0/min1/min2). show/hide are Sets of stems; nodes with states not in
+  // either set are untouched; reset=true restores everything visible.
+  applyStates(show, hide, reset = false) {
+    if (!this.mapRoot) return;
+    this.mapRoot.traverse(o => {
+      const st = o.userData && o.userData.sgbState;
+      if (!st) return;
+      if (reset) { o.visible = true; return; }
+      if (hide && hide.has(st)) o.visible = false;
+      else if (show && show.has(st)) o.visible = true;
+    });
+  }
   setCollisionVisible(v) { if (this.collisionRoot) this.collisionRoot.visible = v; }
 
   fit(root) {

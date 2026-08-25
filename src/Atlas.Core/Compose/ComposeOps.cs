@@ -6,10 +6,14 @@
 // v1 scope: bg.lgb + terrain bgplates (planmap etc. later, flag-gated). BGPart instances whose
 // asset ends .mdl become glTF nodes referencing per-asset-path deduped meshes
 // (LOD selectable, default 0, Main meshes only). SharedGroup (.sgb) instances are
-// resolved ONE level deep: the group's BgPart children get child nodes with their
-// LOCAL transforms, composed with the instance transform by glTF node nesting
+// resolved RECURSIVELY (depth cap 4, cycle-guarded): BgPart children get child
+// nodes with their LOCAL transforms, nested SharedGroups (type 6) become
+// intermediate nodes, so transforms compose by glTF node nesting
 // (world = local * parentWorld row-vector == parent*child column-vector).
-// sgb-in-sgb (type 6) is counted and skipped, never silently dropped.
+// Every part under a nested sgb carries extras sgbState = the DEPTH-1 nested
+// sgb's file stem (quest-progression step containers, e.g. 759's facility
+// masters hold step0..N children); deeper nesting inherits the depth-1 stem.
+// Depth-cap/cycle hits are counted (SgbNestedSkipped), never silently dropped.
 // Materials v1: flat pastel baseColorFactor (GltfWriter.Pastel - FNV-1a hash of
 // the material path, deterministic across runs).
 // Textured mode (opts.Textured): each .mtrl's diffuse (Mtrl.DiffuseResolve -
@@ -71,7 +75,7 @@ public sealed class ComposeSummary
 {
     public uint TerritoryId;             // 0 when composed from a raw level dir
     public string Label = "", LevelDir = "", GltfPath = "", BinPath = "";
-    public int Layers, Instances, SgbGroups, SgbParts, SgbNestedSkipped, OtherSkipped, FailedMdl, UniqueMeshes;
+    public int Layers, Instances, SgbGroups, SgbParts, SgbNestedResolved, SgbNestedSkipped, OtherSkipped, FailedMdl, UniqueMeshes, WaterParts;
     public int TexMaterials, TexFiles, TexFailed;   // textured mode only
     public int TerrainPlates, TerrainMissing;       // terrain bgplates (missing = plate mdl absent/failed)
 }
@@ -164,12 +168,20 @@ public static class ComposeOps
             }
         }
 
-        // ---- mesh cache: asset path -> glTF mesh index (null = load failed) ----
-        var meshByAsset = new Dictionary<string, int?>();
-        int? GetMesh(string asset)
+        // ---- mesh cache: asset path -> (main glTF mesh, water glTF mesh) ----
+        // One mdl parse fills both: Main meshes keep their materials; Water
+        // meshes (the in-model water surfaces the game renders with the water
+        // shader - harbors, rivers, terrain-plate oceans) collapse onto one
+        // shared translucent material and become separate sibling nodes so the
+        // GUI can toggle water independently.
+        var waterMat = -1;
+        int WaterMat() => waterMat >= 0 ? waterMat
+            : waterMat = w.AddMaterial("water", new Vector4(0.25f, 0.5f, 0.68f, 0.55f), alphaBlend: true);
+        var meshByAsset = new Dictionary<string, (int? main, int? water)>();
+        (int? main, int? water) GetMeshes(string asset)
         {
             if (meshByAsset.TryGetValue(asset, out var cached)) return cached;
-            int? result = null;
+            (int? main, int? water) result = (null, null);
             try
             {
                 var mdl = gd.GetFile<MdlFile>(asset);
@@ -177,10 +189,12 @@ public static class ComposeOps
                 {
                     var lod = Math.Clamp(opts.Lod, 0, Math.Max(1, (int)mdl.FileHeader.LodCount) - 1);
                     var model = new LModel(mdl, (LModel.ModelLod)lod);
-                    var meshIdx = -1;
+                    int meshIdx = -1, waterIdx = -1;
                     foreach (var m in model.Meshes)
                     {
-                        if (m.Types == null || Array.IndexOf(m.Types, LMesh.MeshType.Main) < 0) continue;
+                        var isMain = m.Types != null && Array.IndexOf(m.Types, LMesh.MeshType.Main) >= 0;
+                        var isWater = !isMain && m.Types != null && Array.IndexOf(m.Types, LMesh.MeshType.Water) >= 0;
+                        if (!isMain && !isWater) continue;
                         if (m.Vertices is not { Length: > 0 } || m.Indices is not { Length: >= 3 }) continue;
                         var pos = new float[m.Vertices.Length * 3];
                         var nrm = new float[m.Vertices.Length * 3];
@@ -198,10 +212,18 @@ public static class ComposeOps
                         }
                         var idx = new uint[m.Indices.Length - m.Indices.Length % 3];
                         for (var i = 0; i < idx.Length; i++) idx[i] = m.Indices[i];
-                        if (meshIdx < 0) meshIdx = w.AddMesh(Path.GetFileNameWithoutExtension(asset));
-                        w.AddPrimitive(meshIdx, pos, nrm, uv, idx, GetMaterial(m.Material?.MaterialPath ?? asset));
+                        if (isMain)
+                        {
+                            if (meshIdx < 0) meshIdx = w.AddMesh(Path.GetFileNameWithoutExtension(asset));
+                            w.AddPrimitive(meshIdx, pos, nrm, uv, idx, GetMaterial(m.Material?.MaterialPath ?? asset));
+                        }
+                        else
+                        {
+                            if (waterIdx < 0) waterIdx = w.AddMesh(Path.GetFileNameWithoutExtension(asset) + "-water");
+                            w.AddPrimitive(waterIdx, pos, nrm, uv, idx, WaterMat());
+                        }
                     }
-                    if (meshIdx >= 0) result = meshIdx;
+                    result = (meshIdx >= 0 ? meshIdx : null, waterIdx >= 0 ? waterIdx : null);
                 }
             }
             catch (Exception e) { Log($"  mdl error {asset}: {e.Message}"); }
@@ -209,16 +231,16 @@ public static class ComposeOps
             return result;
         }
 
-        // ---- sgb cache: path -> (one-level BgPart list, nested sgb count) ----
-        var sgbCache = new Dictionary<string, (List<SgbPart> parts, int nested)>();
-        (List<SgbPart> parts, int nested) GetSgbParts(string path)
+        // ---- sgb cache: path -> (direct BgPart list, nested sgb list) ----
+        var sgbCache = new Dictionary<string, (List<SgbPart> parts, List<SgbNested> nested)>();
+        (List<SgbPart> parts, List<SgbNested> nested) GetSgbParts(string path)
         {
             if (!sgbCache.TryGetValue(path, out var r))
                 sgbCache[path] = r = ReadSgbParts(gd, path, Log);
             return r;
         }
 
-        static Dictionary<string, object?> Extras(uint tt, uint layerId, uint instId, string asset, string? sgb = null)
+        static Dictionary<string, object?> Extras(uint tt, uint layerId, uint instId, string asset, string? sgb = null, string? state = null, bool water = false)
         {
             var d = new Dictionary<string, object?>
             {
@@ -226,6 +248,8 @@ public static class ComposeOps
                 ["instanceId"] = instId, ["assetPath"] = asset,
             };
             if (sgb != null) d["sgbPath"] = sgb;
+            if (state != null) d["sgbState"] = state;
+            if (water) d["water"] = true;
             return d;
         }
         static string NodeName(string asset, uint instId) => $"{Path.GetFileNameWithoutExtension(asset)}_{instId}";
@@ -270,32 +294,75 @@ public static class ComposeOps
                 {
                     case LayerCommon.BGInstanceObject bgo when (bgo.AssetPath ?? "").EndsWith(".mdl"):
                     {
-                        var mesh = GetMesh(bgo.AssetPath!);
-                        if (mesh == null) { sum.FailedMdl++; break; }
-                        var n = w.AddNode(NodeName(bgo.AssetPath!, io.InstanceId), lt, GltfWriter.FromEulerXyz(lr), ls,
-                            mesh, Extras(terrId, layer.LayerId, io.InstanceId, bgo.AssetPath!));
-                        w.AddChild(EnsureLayer(), n);
+                        var (mesh, wmesh) = GetMeshes(bgo.AssetPath!);
+                        if (mesh == null && wmesh == null) { sum.FailedMdl++; break; }
+                        if (mesh != null)
+                        {
+                            var n = w.AddNode(NodeName(bgo.AssetPath!, io.InstanceId), lt, GltfWriter.FromEulerXyz(lr), ls,
+                                mesh, Extras(terrId, layer.LayerId, io.InstanceId, bgo.AssetPath!));
+                            w.AddChild(EnsureLayer(), n);
+                        }
+                        if (wmesh != null)
+                        {
+                            var wn = w.AddNode(NodeName(bgo.AssetPath!, io.InstanceId) + "_w", lt, GltfWriter.FromEulerXyz(lr), ls,
+                                wmesh, Extras(terrId, layer.LayerId, io.InstanceId, bgo.AssetPath!, water: true));
+                            w.AddChild(EnsureLayer(), wn);
+                            sum.WaterParts++;
+                        }
                         sum.Instances++;
                         break;
                     }
                     case LayerCommon.SharedGroupInstanceObject sgo when (sgo.AssetPath ?? "").EndsWith(".sgb"):
                     {
                         sum.SgbGroups++;
-                        var (parts, nested) = GetSgbParts(sgo.AssetPath!);
-                        sum.SgbNestedSkipped += nested;
-                        if (parts.Count == 0) break;
+                        var (parts, nests) = GetSgbParts(sgo.AssetPath!);
+                        if (parts.Count == 0 && nests.Count == 0) break;
                         var g = w.AddNode(NodeName(sgo.AssetPath!, io.InstanceId), lt, GltfWriter.FromEulerXyz(lr), ls,
                             null, Extras(terrId, layer.LayerId, io.InstanceId, sgo.AssetPath!));
                         w.AddChild(EnsureLayer(), g);
-                        foreach (var p in parts)
+                        // Recursive expansion. Depth-1 nested sgbs are the quest-step
+                        // containers (759 facility masters); their stem becomes
+                        // sgbState on every descendant part so the GUI can filter
+                        // progression states. Cycle guard + depth cap: skips counted.
+                        var chain = new HashSet<string> { sgo.AssetPath! };
+                        void Emit(int parent, List<SgbPart> ps, List<SgbNested> ns, string? state, int depth)
                         {
-                            var mesh = GetMesh(p.Asset);
-                            if (mesh == null) { sum.FailedMdl++; continue; }
-                            var cn = w.AddNode(NodeName(p.Asset, io.InstanceId), p.T, GltfWriter.FromEulerXyz(p.R), p.S,
-                                mesh, Extras(terrId, layer.LayerId, io.InstanceId, p.Asset, sgo.AssetPath));
-                            w.AddChild(g, cn);
-                            sum.SgbParts++;
+                            foreach (var p in ps)
+                            {
+                                var (mesh, wmesh) = GetMeshes(p.Asset);
+                                if (mesh == null && wmesh == null) { sum.FailedMdl++; continue; }
+                                if (mesh != null)
+                                {
+                                    var cn = w.AddNode(NodeName(p.Asset, io.InstanceId), p.T, GltfWriter.FromEulerXyz(p.R), p.S,
+                                        mesh, Extras(terrId, layer.LayerId, io.InstanceId, p.Asset, sgo.AssetPath, state));
+                                    w.AddChild(parent, cn);
+                                }
+                                if (wmesh != null)
+                                {
+                                    var wn = w.AddNode(NodeName(p.Asset, io.InstanceId) + "_w", p.T, GltfWriter.FromEulerXyz(p.R), p.S,
+                                        wmesh, Extras(terrId, layer.LayerId, io.InstanceId, p.Asset, sgo.AssetPath, state, water: true));
+                                    w.AddChild(parent, wn);
+                                    sum.WaterParts++;
+                                }
+                                sum.SgbParts++;
+                            }
+                            foreach (var nb in ns)
+                            {
+                                if (depth >= 4 || !chain.Add(nb.Sgb)) { sum.SgbNestedSkipped++; continue; }
+                                var st = state ?? Path.GetFileNameWithoutExtension(nb.Sgb);
+                                var (cps, cns) = GetSgbParts(nb.Sgb);
+                                if (cps.Count > 0 || cns.Count > 0)
+                                {
+                                    var gn = w.AddNode(NodeName(nb.Sgb, io.InstanceId), nb.T, GltfWriter.FromEulerXyz(nb.R), nb.S,
+                                        null, Extras(terrId, layer.LayerId, io.InstanceId, nb.Sgb, sgo.AssetPath, st));
+                                    w.AddChild(parent, gn);
+                                    sum.SgbNestedResolved++;
+                                    Emit(gn, cps, cns, st, depth + 1);
+                                }
+                                chain.Remove(nb.Sgb);
+                            }
                         }
+                        Emit(g, parts, nests, null, 1);
                         break;
                     }
                     default:
@@ -322,22 +389,36 @@ public static class ComposeOps
                     var px = BitConverter.ToInt16(td, 52 + i * 4);
                     var py = BitConverter.ToInt16(td, 52 + i * 4 + 2);
                     var asset = $"{bgplateDir}/{i:d4}.mdl";
-                    var mesh = GetMesh(asset);
-                    if (mesh == null) { sum.TerrainMissing++; continue; }
+                    var (mesh, wmesh) = GetMeshes(asset);
+                    if (mesh == null && wmesh == null) { sum.TerrainMissing++; continue; }
                     if (terrainNode < 0)
                  {
                      terrainNode = w.AddNode("terrain", extras: new Dictionary<string, object?>
                      { ["layer"] = "terrain", ["layerId"] = 0u, ["terrain"] = true });
                      w.AddChild(root, terrainNode);
                  }
-                    var n = w.AddNode($"plate_{i:d4}",
-                        new Vector3(plateSize * (px + 0.5f), 0f, plateSize * (py + 0.5f)), null, null,
-                        mesh, new Dictionary<string, object?>
-                        {
-                            ["territoryId"] = terrId, ["lgbFile"] = "terrain", ["layerId"] = 0u,
-                            ["instanceId"] = (uint)i, ["assetPath"] = asset,
-                        });
-                    w.AddChild(terrainNode, n);
+                    var pt = new Vector3(plateSize * (px + 0.5f), 0f, plateSize * (py + 0.5f));
+                    if (mesh != null)
+                    {
+                        var n = w.AddNode($"plate_{i:d4}", pt, null, null,
+                            mesh, new Dictionary<string, object?>
+                            {
+                                ["territoryId"] = terrId, ["lgbFile"] = "terrain", ["layerId"] = 0u,
+                                ["instanceId"] = (uint)i, ["assetPath"] = asset,
+                            });
+                        w.AddChild(terrainNode, n);
+                    }
+                    if (wmesh != null)
+                    {
+                        var wn = w.AddNode($"plate_{i:d4}_w", pt, null, null,
+                            wmesh, new Dictionary<string, object?>
+                            {
+                                ["territoryId"] = terrId, ["lgbFile"] = "terrain", ["layerId"] = 0u,
+                                ["instanceId"] = (uint)i, ["assetPath"] = asset, ["water"] = true,
+                            });
+                        w.AddChild(terrainNode, wn);
+                        sum.WaterParts++;
+                    }
                     sum.TerrainPlates++;
                 }
                 Log($"terrain: {sum.TerrainPlates} plates (cell {plateSize}) "
@@ -345,30 +426,33 @@ public static class ComposeOps
             }
         }
 
-        sum.UniqueMeshes = meshByAsset.Count(kv => kv.Value != null);
+        sum.UniqueMeshes = meshByAsset.Count(kv => kv.Value.main != null || kv.Value.water != null);
         Directory.CreateDirectory(outDir);
         var stem = opts.Textured ? $"map-{label}-tex" : $"map-{label}";
         sum.GltfPath = Path.Combine(outDir, $"{stem}.gltf");
         sum.BinPath = Path.Combine(outDir, $"{stem}.bin");
         w.Write(sum.GltfPath, sum.BinPath, stem);
-        Log($"bg.lgb: {sum.Instances} bg instances + {sum.SgbParts} sgb parts placed, " +
+        Log($"bg.lgb: {sum.Instances} bg instances + {sum.SgbParts} sgb parts placed ({sum.WaterParts} water), " +
             $"{sum.UniqueMeshes} unique meshes, {w.NodeCount} nodes, {sum.Layers} layers");
         if (opts.Textured)
             Log($"textures: {sum.TexMaterials} materials textured, {sum.TexFiles} pngs, {sum.TexFailed} pastel fallback");
         return sum;
     }
 
-    // ---------- SGB one-level BgPart extraction ----------
+    // ---------- SGB direct-child extraction (BgParts + nested sgbs) ----------
     public readonly record struct SgbPart(string Asset, Vector3 T, Vector3 R, Vector3 S);
+    public readonly record struct SgbNested(string Sgb, Vector3 T, Vector3 R, Vector3 S);
 
     /// <summary>Walk one .sgb's SCN1 embedded layer groups (same byte layout as
     /// TerritoryDump.ExpandSgb / SgbLayouts: instance TRS @+0xC local space, path
-    /// offset @+0x30) and return its direct BgPart .mdl entries. Nested
-    /// SharedGroups (type 6) are only counted - v1 resolves ONE level deep.</summary>
-    public static (List<SgbPart> parts, int nested) ReadSgbParts(GameData gd, string sgbPath, Action<string>? log)
+    /// offset @+0x30) and return its direct BgPart .mdl entries plus nested
+    /// SharedGroup (type 6) references with their local transforms; the caller
+    /// recurses (quest-step containers like 759's facility masters keep ALL
+    /// their content in nested per-step sgbs).</summary>
+    public static (List<SgbPart> parts, List<SgbNested> nested) ReadSgbParts(GameData gd, string sgbPath, Action<string>? log)
     {
         var parts = new List<SgbPart>();
-        var nested = 0;
+        var nested = new List<SgbNested>();
         var f = gd.GetFile(sgbPath);
         if (f == null) { log?.Invoke($"  sgb missing: {sgbPath}"); return (parts, nested); }
         var d = f.Data;
@@ -413,7 +497,15 @@ public static class ComposeOps
                                     new Vector3(F32(io + 0x18), F32(io + 0x1C), F32(io + 0x20)),
                                     new Vector3(F32(io + 0x24), F32(io + 0x28), F32(io + 0x2C))));
                         }
-                        else if (ty == 6) nested++;   // sgb-in-sgb: v1 counts + skips
+                        else if (ty == 6)             // sgb-in-sgb: return for recursion
+                        {
+                            var sgb = CStr(io + (int)U32(io + 0x30));
+                            if (sgb.EndsWith(".sgb"))
+                                nested.Add(new SgbNested(sgb,
+                                    new Vector3(F32(io + 0xC), F32(io + 0x10), F32(io + 0x14)),
+                                    new Vector3(F32(io + 0x18), F32(io + 0x1C), F32(io + 0x20)),
+                                    new Vector3(F32(io + 0x24), F32(io + 0x28), F32(io + 0x2C))));
+                        }
                     }
                 }
             }

@@ -534,7 +534,7 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
     var gltf = Path.Combine(dir, $"{stem}.gltf");
     // Cache-buster: composed-map format version (see const). Maps
     // built by an older server lack the marker and are rebuilt once.
-    const string MapFormatVersion = "3"; // 2=terrain bgplates, 3=layer extras
+    const string MapFormatVersion = "4"; // 2=terrain bgplates, 3=layer extras, 4=recursive sgb + sgbState + water meshes
     var genFile = Path.Combine(dir, $"{stem}.gen");
     var gen = File.Exists(genFile) ? File.ReadAllText(genFile).Trim() : "(none)";
     if (refresh == 1 || !File.Exists(gltf) || gen != MapFormatVersion)

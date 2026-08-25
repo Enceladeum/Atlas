@@ -77,7 +77,7 @@ public sealed class GltfWriter
     /// <summary>pbrMetallicRoughness material (metallic 0, rough 1). If
     /// <paramref name="baseColorTextureUri"/> is given, an image+texture pair is
     /// emitted and wired as baseColorTexture (relative URI, resolved by the viewer).</summary>
-    public int AddMaterial(string? name, Vector4 baseColor, string? baseColorTextureUri = null, bool doubleSided = true, bool alphaMask = false)
+    public int AddMaterial(string? name, Vector4 baseColor, string? baseColorTextureUri = null, bool doubleSided = true, bool alphaMask = false, bool alphaBlend = false)
     {
         var pbr = new Dictionary<string, object?>
         {
@@ -97,6 +97,7 @@ public sealed class GltfWriter
         }
         var m = new Dictionary<string, object?> { ["pbrMetallicRoughness"] = pbr, ["doubleSided"] = doubleSided };
         if (alphaMask) { m["alphaMode"] = "MASK"; m["alphaCutoff"] = 0.5f; }
+        else if (alphaBlend) m["alphaMode"] = "BLEND";
         if (name != null) m["name"] = name;
         _materials.Add(m);
         return _materials.Count - 1;

@@ -85,7 +85,7 @@ public static class MapCommands
                         ? $", {s.TexMaterials} textured materials ({s.TexFiles} pngs, {s.TexFailed} fallback)" : "";
                     Console.WriteLine(
                         $"map-{s.Label}: {s.Instances} bg instances, {s.UniqueMeshes} unique meshes, " +
-                        $"{s.SgbGroups} sgb groups ({s.SgbParts} parts resolved one level, {s.SgbNestedSkipped} nested sgb skipped), " +
+                        $"{s.SgbGroups} sgb groups ({s.SgbParts} parts, {s.SgbNestedResolved} nested sgb expanded, {s.SgbNestedSkipped} skipped), {s.WaterParts} water surfaces, " +
                         $"{s.OtherSkipped} other instances skipped, {s.FailedMdl} mdl failed, {s.TerrainPlates} terrain plates, {s.Layers} layers{texInfo} -> {s.GltfPath}");
                     return 0;
                 }
