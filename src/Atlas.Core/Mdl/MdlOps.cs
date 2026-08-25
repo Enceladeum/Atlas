@@ -48,11 +48,30 @@ public sealed record ModelInfo(
 
 public static class MdlOps
 {
+    /// <summary>
+    /// Load a .mdl via Lumina, shimming v6 chara models to v5 first (MdlV6.ToV5).
+    /// v5 loads take the direct sqpack path; shimmed bytes go through a temp file
+    /// (Lumina's byte-level loader) with the game path preserved as origin.
+    /// </summary>
+    public static MdlFile LoadMdl(XivEnv env, string path)
+    {
+        var raw = env.Game.GetFile(path) ?? throw new FileNotFoundException($"not found: {path}");
+        var data = MdlV6.ToV5(raw.Data);
+        if (ReferenceEquals(data, raw.Data))
+            return env.Game.GetFile<MdlFile>(path)!;
+        var tmp = Path.Combine(Path.GetTempPath(), $"atlas-v6-{Guid.NewGuid():N}.mdl");
+        try
+        {
+            File.WriteAllBytes(tmp, data);
+            return env.Game.GetFileFromDisk<MdlFile>(tmp, path);
+        }
+        finally { try { File.Delete(tmp); } catch { /* best effort */ } }
+    }
+
     /// <summary>Load a .mdl and summarize every LOD (mesh/vertex/index counts, materials, bbox).</summary>
     public static ModelInfo Info(XivEnv env, string path)
     {
-        var mdl = env.Game.GetFile<MdlFile>(path)
-                  ?? throw new FileNotFoundException($"not found: {path}");
+        var mdl = LoadMdl(env, path);
 
         var lodCount = (int)mdl.FileHeader.LodCount;
         var lods = new List<MdlLodInfo>(lodCount);
@@ -105,8 +124,7 @@ public static class MdlOps
     /// </summary>
     public static void ExportObj(XivEnv env, string path, TextWriter w, int lod = 0, Action<string>? log = null)
     {
-        var mdl = env.Game.GetFile<MdlFile>(path)
-                  ?? throw new FileNotFoundException($"not found: {path}");
+        var mdl = LoadMdl(env, path);
         if (lod < 0 || lod >= mdl.FileHeader.LodCount)
             throw new ArgumentOutOfRangeException(nameof(lod), lod, $"model has {mdl.FileHeader.LodCount} LODs");
 

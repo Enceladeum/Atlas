@@ -37,11 +37,18 @@ surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps
                                              # full territory workspace (11 CSVs)
     atlas mod Pcb dump 1345 --out d --obj    # collision-mesh.obj export
     atlas mod Mdl info <path.mdl>            # meshes, materials, bbox per LOD
+                                             #  (v6/Dawntrail chara mdls read via a
+                                             #  transparent v6->v5 shim; all Mdl verbs)
     atlas mod Mdl obj <path.mdl> --out f     # model -> OBJ (--lod N)
     atlas mod Mdl gltf <path.mdl> --out d/   # model -> glTF (--lod N --textured
                                              #  --texsize N): visual meshes only,
                                              #  textured = <stem>-tex.gltf + tex/*.png
     atlas mod Mtrl dump <path.mtrl>          # shpk, textures, samplers, constants (CRC-named)
+    atlas mod Chara imc <path.imc>           # equipment variant table (.imc): per-
+                                             #  part default/variant entries as CSV
+    atlas mod Chara resolve <path.mdl>       # chara mdl -> concrete per-variant
+                                             #  mtrl paths via its .imc (--variant N
+                                             #  --json); existence-checked
     atlas mod Tex info|png <path.tex> --out f  # texture info / -> PNG (--mip N)
     atlas mod Scd info <path.scd>            # sound container: entries table (format,
                                              #  channels, rate, length, loops, markers)

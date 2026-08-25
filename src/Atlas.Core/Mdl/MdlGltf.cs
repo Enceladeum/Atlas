@@ -19,9 +19,10 @@
 // Materials: textured mode resolves each .mtrl diffuse via Mtrl.DiffuseResolve
 // (the shared sampler-priority rule), wired as baseColorTexture with alphaMode
 // MASK for cutouts; anything unresolvable falls back to GltfWriter.Pastel.
-// Known pastel-fallback cases: chara materials (variant-relative mtrl paths -
-// the .mdl carries no absolute game path) and BC4/BC6H/2D-array textures
-// (Lumina cannot decode them).
+// Chara variant-relative mtrl refs are resolved through the item's .imc
+// default entry (CharaOps); remaining pastel fallbacks are materials whose
+// diffuse cannot be derived (skin/tile-based chara shaders, or BC4/BC6H/
+// 2D-array textures Lumina cannot decode).
 
 using System.Numerics;
 using Atlas.Core.Gltf;
@@ -107,12 +108,26 @@ public static class MdlGltf
     static (GltfWriter w, MdlGltfSummary sum) Build(XivEnv env, string path, MdlGltfOptions opts,
         Func<DiffuseResolve.Diffuse, string?> texUri, Action<string>? log)
     {
-        var mdl = env.Game.GetFile<MdlFile>(path)
-                  ?? throw new FileNotFoundException($"not found: {path}");
+        var mdl = MdlOps.LoadMdl(env, path);
         var lod = Math.Clamp(opts.Lod, 0, Math.Max(1, (int)mdl.FileHeader.LodCount) - 1);
         var model = new Model(mdl, (Model.ModelLod)lod);
         var w = new GltfWriter();
         var sum = new MdlGltfSummary { MdlPath = path, Lod = lod };
+
+        // Chara materials are variant-relative ("/mt_....mtrl"); resolve them to a
+        // concrete material folder via the item's imc default entry (CharaOps).
+        string? charaFolder = null;
+        if (Chara.CharaOps.Classify(path) is { } cref)
+        {
+            try
+            {
+                var imc = Chara.CharaOps.LoadImc(env, Chara.CharaOps.ImcPath(cref));
+                var def = imc.Parts[Chara.CharaOps.PartIndex(cref, imc.Parts.Length)].Default;
+                charaFolder = Chara.CharaOps.MaterialFolder(cref, Math.Max(1, (int)def.MaterialId));
+            }
+            catch { /* unresolvable -> keep relative, pastel fallback */ }
+        }
+        string AbsMat(string m) => m.StartsWith('/') && charaFolder != null ? charaFolder + m : m;
 
         var matByPath = new Dictionary<string, int>();
         int GetMaterial(string matPath)
@@ -159,7 +174,7 @@ public static class MdlGltf
             var idx = new uint[mesh.Indices.Length - mesh.Indices.Length % 3];
             for (var i = 0; i < idx.Length; i++) idx[i] = mesh.Indices[i];
             if (meshIdx < 0) meshIdx = w.AddMesh(Path.GetFileNameWithoutExtension(path));
-            w.AddPrimitive(meshIdx, pos, nrm, uv, idx, GetMaterial(mesh.Material?.MaterialPath ?? path));
+            w.AddPrimitive(meshIdx, pos, nrm, uv, idx, GetMaterial(AbsMat(mesh.Material?.MaterialPath ?? path)));
             sum.SourceMeshes++;
             sum.Vertices += mesh.Vertices.Length;
             sum.Triangles += idx.Length / 3;
