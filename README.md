@@ -69,6 +69,16 @@ surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps
                                              # sidecar records the game version — `where
                                              # --index` warns when the game has moved on
                                              #  atlas mod Library where <frag> --index i.csv
+    atlas mod Deps index --out deps.csv     # dependency index: mdl -> mtrl -> tex
+                                             # edges for every .mdl/.mtrl in the
+                                             # ResLogger2 list (--paths <list[.gz]>
+                                             # or ATLAS_PATHS); <out>.ver sidecar
+                                             # records the game version
+    atlas mod Deps refs <path> --index deps.csv
+                                             # both directions for one asset: what
+                                             # it uses + what uses it (mtrl -> the
+                                             # models referencing it, tex -> the
+                                             # materials); exit 2 on no match
     atlas mod <Module> <verb> ...            # Lgb / Sgb / Cutb / Tmb / Library / Bnpc ...
     atlas gui                                # spawn Atlas.Server + open browser
                                              # (--port N --no-browser --server <path>)

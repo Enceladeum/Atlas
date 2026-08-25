@@ -12,6 +12,7 @@ using System.Text;
 using Atlas.Core;
 using Atlas.Core.Avfx;
 using Atlas.Core.Compose;
+using Atlas.Core.Deps;
 using Atlas.Core.Exd;
 using Atlas.Core.Gltf;
 using Atlas.Core.Mdl;
@@ -318,6 +319,94 @@ app.MapGet("/api/usages", async (string? q, string? tt, int? limit) =>
     return Results.Json(new { indexed = true, building = usageBuilding == 1,
         stale = string.IsNullOrEmpty(tt) && UsageStale(out _, out _),
         total = hits.Count, rows = hits.Take(cap) });
+});
+
+// ---- dependency index (mdl -> mtrl -> tex, both directions) ----
+// Built from the ResLogger2 path list (--paths/ATLAS_PATHS): every known
+// .mdl's material list (string-blob parse, works on v5 and v6) plus every
+// .mtrl's texture refs, one CSV in the work dir. /api/deps serves both
+// directions. Chara mdls store variant-relative refs ("/mt_....mtrl") which
+// match by filename until the equipment resolver lands.
+int depsBuilding = 0, depsBuildFiles = 0, depsBuildEdges = 0;
+string? depsBuildError = null;
+string DepsIndexPath() => Path.Combine(workDir, "deps-index.csv");
+string? DepsIndexVer()
+{
+    var f = DepsIndexPath() + ".ver";
+    try { return File.Exists(f) ? File.ReadAllText(f).Trim() : null; } catch { return null; }
+}
+bool DepsStale(out string? iv, out string? gv)
+{
+    iv = DepsIndexVer(); gv = LevelDirs.GameVersion(gamePath);
+    return iv != null && gv != null && iv != gv;
+}
+
+app.MapGet("/api/deps/status", () =>
+{
+    var stale = DepsStale(out var iv, out var gv);
+    return Results.Json(new
+    {
+        indexed = File.Exists(DepsIndexPath()),
+        building = depsBuilding == 1,
+        files = depsBuildFiles, edges = depsBuildEdges, error = depsBuildError,
+        hasPaths = pathsFile != null && File.Exists(pathsFile),
+        indexVersion = iv, gameVersion = gv, stale,
+    });
+});
+
+app.MapPost("/api/deps/build", () =>
+{
+    if (pathsFile == null || !File.Exists(pathsFile))
+        return Results.BadRequest(new { error = "server started without --paths/ATLAS_PATHS; the dependency index needs the ResLogger2 path list" });
+    if (Interlocked.CompareExchange(ref depsBuilding, 1, 0) != 0)
+        return Results.Json(new { building = true, files = depsBuildFiles, edges = depsBuildEdges });
+    depsBuildFiles = 0; depsBuildEdges = 0; depsBuildError = null;
+    _ = Task.Run(async () =>
+    {
+        var tmp = DepsIndexPath() + ".tmp";
+        try
+        {
+            var all = DepsOps.IndexablePaths(DepsOps.ReadPathsFile(pathsFile)).ToList();
+            await using (var w = Csv.OpenWriter(tmp))
+            {
+                w.WriteLine(DepsOps.Header);
+                // one semaphore hold per chunk so interactive routes interleave
+                for (var i = 0; i < all.Count; i += 2000)
+                {
+                    var chunk = all.GetRange(i, Math.Min(2000, all.Count - i));
+                    var stats = await WithEnv(e => DepsOps.BuildIndex(e, chunk, w, header: false));
+                    depsBuildFiles += stats.Files;
+                    depsBuildEdges += stats.Edges;
+                }
+            }
+            File.Move(tmp, DepsIndexPath(), overwrite: true);
+            var gv = LevelDirs.GameVersion(gamePath);
+            var verFile = DepsIndexPath() + ".ver";
+            if (gv != null) File.WriteAllText(verFile, gv);
+            else { try { File.Delete(verFile); } catch { } }
+        }
+        catch (Exception ex) { depsBuildError = ex.Message; try { File.Delete(tmp); } catch { } }
+        finally { depsBuilding = 0; }
+    });
+    return Results.Json(new { building = true, files = 0, edges = 0 });
+});
+
+app.MapGet("/api/deps", (string path) =>
+{
+    if (!File.Exists(DepsIndexPath()))
+        return Results.Json(new
+        {
+            indexed = false, building = depsBuilding == 1, stale = false,
+            uses = Array.Empty<string>(), usedBy = Array.Empty<string>(),
+        });
+    var (uses, usedBy) = DepsOps.Query(DepsIndexPath(), path);
+    return Results.Json(new
+    {
+        indexed = true, building = depsBuilding == 1,
+        stale = DepsStale(out _, out _),
+        uses = uses.Select(d => d.Target).ToArray(),
+        usedBy = usedBy.Select(d => d.Source).ToArray(),
+    });
 });
 
 app.MapGet("/api/mtrl", async (string path) =>

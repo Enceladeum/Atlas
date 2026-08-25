@@ -57,4 +57,11 @@ export const api = {
     if (!r.ok) throw new Error(`${r.status} ${r.statusText} — /api/usages/build`);
     return r.json();
   },
+  deps: (path) => jget(`/api/deps?path=${encodeURIComponent(path)}`),
+  depsStatus: () => jget("/api/deps/status"),
+  depsBuild: async () => {
+    const r = await fetch(BASE + "/api/deps/build", { method: "POST" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} — /api/deps/build`);
+    return r.json();
+  },
 };

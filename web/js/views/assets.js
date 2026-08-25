@@ -145,6 +145,91 @@ async function renderPreview(main, path) {
 
 const link = (p) => el("a", { onclick: () => { location.hash = "#/assets/" + encodeURIComponent(p); } }, p);
 
+// Shared "used by" pane backed by the dependency index (mdl→mtrl→tex, both
+// directions; built from the ResLogger2 path list). dirKind picks the copy.
+async function depsPane(body, path, dirKind, kindLabel) {
+  const wrap = el("div", {});
+  body.append(wrap);
+  const render = async () => {
+    if (!wrap.isConnected) return;
+    wrap.innerHTML = "";
+    let res;
+    try { res = await api.deps(path); } catch { return; }  // route unavailable; stay quiet
+    if (!wrap.isConnected) return;
+    wrap.append(el("div", { class: "section-h" }, `Used by ${kindLabel}`));
+    if (!res.indexed) {
+      let st = null;
+      try { st = await api.depsStatus(); } catch { }
+      if (st && !st.hasPaths) {
+        wrap.append(el("div", { class: "hint" },
+          "needs the ResLogger2 path list — set pathsFile in settings.json (or --paths/ATLAS_PATHS) and restart"));
+        return;
+      }
+      const note = el("div", { class: "hint" },
+        res.building
+          ? "Building the dependency index…"
+          : `Build the dependency index to see every ${kindLabel.replace(/s$/, "")} that uses this ${dirKind === "mtrl" ? "material" : "texture"} (one sweep of all known mdl+mtrl paths; a few minutes, persists in the work dir).`);
+      const btn = el("button", { class: "btn", disabled: res.building ? "" : undefined, onclick: async () => {
+        btn.disabled = true; note.textContent = "Building the dependency index…";
+        try { await api.depsBuild(); } catch (e) { toast("Index build failed to start: " + e.message, "err"); btn.disabled = false; return; }
+        poll();
+      } }, res.building ? "Building…" : "Build dependency index");
+      const prog = el("span", { class: "hint", style: "margin-left:8px" });
+      const poll = async () => {
+        if (!wrap.isConnected) return;
+        let s;
+        try { s = await api.depsStatus(); } catch { return; }
+        if (s.building) {
+          prog.textContent = `${s.files} files · ${s.edges} edges`;
+          setTimeout(poll, 2000);
+        } else if (s.error) {
+          toast("Deps index build failed: " + s.error, "err");
+          btn.disabled = false; btn.textContent = "Build dependency index";
+        } else { render(); }
+      };
+      if (res.building) poll();
+      wrap.append(note, el("div", { style: "margin-top:6px" }, btn, prog));
+      return;
+    }
+    if (res.stale) {
+      let sv = null;
+      try { sv = await api.depsStatus(); } catch { /* banner still useful without versions */ }
+      if (!wrap.isConnected) return;
+      const lbl = sv && sv.indexVersion && sv.gameVersion
+        ? `index built for ${sv.indexVersion}, game is ${sv.gameVersion}`
+        : "index predates the current game version";
+      const prog = el("span", { class: "hint", style: "margin-left:8px" });
+      const rb = el("button", { class: "btn", style: "margin-left:8px", onclick: async () => {
+        rb.disabled = true; rb.textContent = "Rebuilding…";
+        try { await api.depsBuild(); } catch (e) { toast("Rebuild failed to start: " + e.message, "err"); rb.disabled = false; rb.textContent = "Rebuild"; return; }
+        const poll = async () => {
+          if (!wrap.isConnected) return;
+          let st;
+          try { st = await api.depsStatus(); } catch { return; }
+          if (st.building) { prog.textContent = `${st.files} files · ${st.edges} edges`; setTimeout(poll, 2000); }
+          else if (st.error) { toast("Rebuild failed: " + st.error, "err"); rb.disabled = false; rb.textContent = "Rebuild"; }
+          else render();
+        };
+        poll();
+      } }, "Rebuild");
+      wrap.append(el("div", { class: "hint", style: "color:#d7a557" }, "⚠ " + lbl, rb, prog));
+    }
+    const rows = res.usedBy || [];
+    const h = wrap.querySelector(".section-h");
+    h.textContent = `Used by ${rows.length} ${rows.length === 1 ? kindLabel.replace(/s$/, "") : kindLabel}`;
+    if (!rows.length) {
+      wrap.append(el("div", { class: "hint" }, "nothing in the index references this file"));
+      return;
+    }
+    const t = el("table", { class: "mini" });
+    for (const r of rows.slice(0, 200)) t.append(el("tr", {}, el("td", {}, link(r))));
+    wrap.append(t);
+    if (rows.length > 200)
+      wrap.append(el("div", { class: "hint" }, `…and ${rows.length - 200} more`));
+  };
+  render();
+}
+
 async function previewTex(body, path) {
   const info = await api.texInfo(path);
   body.innerHTML = "";
@@ -166,6 +251,7 @@ async function previewTex(body, path) {
     ),
     el("div", { class: "tex-stage" }, img),
   );
+  depsPane(body, path, "tex", "materials");
 }
 
 async function previewMdl(body, path) {
@@ -347,6 +433,7 @@ async function previewMtrl(body, path) {
         el("td", {}, (c.values || []).map(v => typeof v === "number" ? +v.toFixed(4) : v).join(", "))));
     body.append(t);
   }
+  depsPane(body, path, "mtrl", "models");
 }
 
 async function previewScd(body, path) {
