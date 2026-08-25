@@ -104,7 +104,7 @@ export class Viewport {
     loop();
   }
 
-  async loadMapGltf(url, onProgress) {
+  async loadMapGltf(url, onProgress, { fit = true } = {}) {
     this.clearMap();
     const gltf = await new Promise((res, rej) =>
       new GLTFLoader().load(url, res, (ev) => onProgress?.(ev.loaded), rej));
@@ -112,7 +112,9 @@ export class Viewport {
     // double-sided: bg geometry has plenty of single-sided faces viewed from behind
     this.mapRoot.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; } });
     this.scene.add(this.mapRoot);
-    this.fit(this.mapRoot);
+    // fit=false keeps the camera where it is (textured/untextured swap of the
+    // same map mid-inspection must not reset the view)
+    if (fit) this.fit(this.mapRoot);
     return this.layers();
   }
 

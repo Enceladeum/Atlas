@@ -162,10 +162,13 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   activeVp = vp;
 
   // overlay toggles
-  let mapOn = true, colOn = false, colLoaded = false, texOn = false;
+  let mapOn = true, colOn = false, colLoaded = false;
+  // textured is the default view; the toggle is remembered across sessions
+  let texOn = localStorage.getItem("atlas.textured") !== "0";
   const mapChk = el("input", { type: "checkbox", checked: "" });
   const colChk = el("input", { type: "checkbox" });
   const texChk = el("input", { type: "checkbox" });
+  texChk.checked = texOn;
   overlays.append(
     el("h3", {}, "Overlays"),
     el("label", { class: "vp-row" }, mapChk, el("span", { class: "n" }, "Map visual (glTF)")),
@@ -180,7 +183,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
       el("div", {}, want ? "Composing textured map…" : "Loading map…"),
       el("div", { class: "sub" }, want ? "first compose exports diffuse PNGs; cached afterwards" : ""));
     host.append(l);
-    try { await loadMap(want); texOn = want; }
+    try { await loadMap(want); texOn = want; localStorage.setItem("atlas.textured", want ? "1" : "0"); }
     catch (e) {
       toast("Textured map failed: " + e.message, "err");
       texChk.checked = texOn;
@@ -251,11 +254,13 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
   }
 
+  let mapLoaded = false; // after the first load, later swaps keep the camera
   async function loadMap(textured, force = false) {
     const gltfName = textured ? `map-${tt}-tex.gltf` : `map-${tt}.gltf`;
     await ensureComposed(textured, force);
     if (!ws.files.includes(gltfName)) ws.files.push(gltfName);
-    const layers = await vp.loadMapGltf(api.territoryFileUrl(tt, gltfName));
+    const layers = await vp.loadMapGltf(api.territoryFileUrl(tt, gltfName), undefined, { fit: !mapLoaded });
+    mapLoaded = true;
     vp.setMapVisible(mapOn);
     buildLayersPanel(layers);
   }
@@ -305,17 +310,28 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     layersPanel.append(rows);
   }
 
-  loading.querySelector("div:nth-child(2)").textContent = "Composing map glTF…";
-  loading.querySelector(".sub").textContent = "bg.lgb → one scene; first compose takes ~30 s, cached afterwards";
+  loading.querySelector("div:nth-child(2)").textContent = texOn ? "Composing textured map…" : "Composing map glTF…";
+  loading.querySelector(".sub").textContent = texOn
+    ? "first compose exports diffuse PNGs; cached afterwards"
+    : "bg.lgb → one scene; first compose takes ~30 s, cached afterwards";
   try {
-    await loadMap(false, refresh);
+    await loadMap(texOn, refresh);
     loading.remove();
   } catch (e) {
+    let ok = false;
+    if (texOn) {
+      // graceful degrade: textured compose failed; try untextured before giving up
+      texChk.checked = texOn = false;
+      toast("Textured map failed (" + e.message + "); loading untextured", "err");
+      try { await loadMap(false, refresh); ok = true; } catch { /* fall through */ }
+    }
     loading.remove();
-    toast("Map compose/load failed: " + e.message, "err");
-    // still usable with collision only
-    colChk.checked = true;
-    colChk.dispatchEvent(new Event("change"));
+    if (!ok) {
+      toast("Map compose/load failed: " + e.message, "err");
+      // still usable with collision only
+      colChk.checked = true;
+      colChk.dispatchEvent(new Event("change"));
+    }
   }
 
   // stats
