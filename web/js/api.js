@@ -48,4 +48,13 @@ export const api = {
     if (q) p.set("q", q);
     if (tt) p.set("tt", tt);
     if (limit) p.set("limit", limit);
-    const
+    const qs = p.toString();
+    return jget("/api/usages" + (qs ? "?" + qs : ""));
+  },
+  usagesStatus: () => jget("/api/usages/status"),
+  usagesBuild: async () => {
+    const r = await fetch(BASE + "/api/usages/build", { method: "POST" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} — /api/usages/build`);
+    return r.json();
+  },
+};

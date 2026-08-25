@@ -357,4 +357,132 @@ async function previewScd(body, path) {
   body.append(
     el("div", { class: "kv" },
       el("span", { class: "k" }, "sounds"), el("span", { class: "v" }, String(info.soundCount)),
-      el("span", { class: "k" }, "tracks"), el("span", { c
+      el("span", { class: "k" }, "tracks"), el("span", { class: "v" }, String(info.trackCount)),
+      el("span", { class: "k" }, "audio entries"), el("span", { class: "v" }, String(info.audioCount)),
+    ),
+    el("div", { class: "toolbar-row" },
+      el("a", { class: "btn", href: api.extractUrl(path), download: path.slice(path.lastIndexOf("/") + 1) }, "Extract .scd")),
+  );
+  if (!playable.length) {
+    body.append(el("div", { class: "hint" }, "no playable audio entries in this scd"));
+    return;
+  }
+  // one shared player; clicking an entry row loads it
+  const audio = el("audio", { controls: "", style: "width:100%; margin-top:8px" });
+  const fmtSecs = (s) => s == null ? "?" : (s < 10 ? s.toFixed(1) : Math.round(s)) + "s";
+  const t = el("table", { class: "mini" });
+  t.append(el("tr", {}, el("th", {}, "#"), el("th", {}, "format"), el("th", {}, "ch"),
+    el("th", {}, "rate"), el("th", {}, "length"), el("th", {}, "loop"), el("th", {}, "")));
+  let activeRow = null;
+  const load = (e2, row, autoplay) => {
+    if (activeRow) activeRow.classList.remove("active");
+    (activeRow = row).classList.add("active");
+    audio.src = api.scdAudioUrl(path, e2.index);
+    if (autoplay) audio.play().catch(() => { /* autoplay policy; user presses play */ });
+  };
+  let firstRow = null;
+  for (const e2 of entries) {
+    if (e2.error) {
+      t.append(el("tr", {}, el("td", {}, String(e2.index)),
+        el("td", { colspan: "6", style: "color:var(--fg2)" }, "error: " + e2.error)));
+      continue;
+    }
+    if (e2.format === "Empty") continue;
+    const row = el("tr", { style: "cursor:pointer" });
+    row.addEventListener("click", () => load(e2, row, true));
+    row.append(
+      el("td", {}, String(e2.index)),
+      el("td", {}, e2.format),
+      el("td", {}, String(e2.channels)),
+      el("td", {}, `${e2.rate} Hz`),
+      el("td", {}, fmtSecs(e2.seconds)),
+      el("td", {}, e2.loopEnd > 0 ? `${e2.loopStart}..${e2.loopEnd}` : "—"),
+      el("td", {}, el("a", { class: "btn", style: "padding:1px 8px",
+        href: api.scdAudioUrl(path, e2.index),
+        download: path.replaceAll("/", "_") + `.${e2.index}.${e2.format === "OggVorbis" ? "ogg" : "wav"}`,
+        onclick: (ev) => ev.stopPropagation() }, "↓")),
+    );
+    if (!firstRow) { firstRow = row; firstRow._entry = e2; }
+    t.append(row);
+  }
+  body.append(el("div", { class: "section-h" }, "Audio entries — click to play"), t, audio);
+  if (firstRow) load(firstRow._entry, firstRow, false);
+}
+
+async function previewAvfx(body, path) {
+  const info = await api.avfxInfo(path);
+  body.innerHTML = "";
+  body.append(
+    el("div", { class: "kv" },
+      el("span", { class: "k" }, "version"), el("span", { class: "v" }, "0x" + (info.version ?? 0).toString(16)),
+      el("span", { class: "k" }, "schedulers"), el("span", { class: "v" }, String(info.schedulers)),
+      el("span", { class: "k" }, "timelines"), el("span", { class: "v" }, String(info.timelines)),
+      el("span", { class: "k" }, "emitters"), el("span", { class: "v" }, String(info.emitters)),
+      el("span", { class: "k" }, "particles"), el("span", { class: "v" }, String(info.particles)),
+      el("span", { class: "k" }, "effectors"), el("span", { class: "v" }, String(info.effectors)),
+      el("span", { class: "k" }, "binders"), el("span", { class: "v" }, String(info.binders)),
+    ),
+    el("div", { class: "toolbar-row" },
+      el("a", { class: "btn", href: api.extractUrl(path), download: path.slice(path.lastIndexOf("/") + 1) }, "Extract .avfx")),
+    el("div", { class: "hint" },
+      "structural inspection — playback needs the game's particle engine"),
+  );
+  // embedded models: 3D preview via the existing glTF viewer
+  const models = info.models || [];
+  const drawable = models.filter(m => m.vertexCount > 0 && m.triCount > 0);
+  body.append(el("div", { class: "section-h" },
+    `Embedded models — ${models.length}${drawable.length !== models.length ? ` (${drawable.length} drawable)` : ""}`));
+  if (models.length) {
+    const t = el("table", { class: "mini" });
+    for (const m of models)
+      t.append(el("tr", {}, el("td", {}, `[${m.index}]`),
+        el("td", {}, `${m.vertexCount} verts`), el("td", {}, `${m.triCount} tris`),
+        el("td", {}, m.vertexCount === 0 && m.triCount === 0 ? "emit-only" : "")));
+    body.append(t);
+  } else {
+    body.append(el("div", { class: "hint" }, "none"));
+  }
+  if (drawable.length) {
+    body.append(el("div", { class: "toolbar-row" },
+      el("a", { class: "btn", href: api.avfxGltfUrl(path), download: path.replaceAll("/", "_") + ".gltf" }, "Export glTF")));
+    const host = el("div", { class: "mini-vp" });
+    body.append(host);
+    const vp = new Viewport(host);
+    activeVp = vp;
+    const load = el("div", { class: "vp-loading" }, el("div", { class: "spinner" }), el("div", {}, "Building preview…"));
+    host.append(load);
+    try { await vp.loadMapGltf(api.avfxGltfUrl(path)); }
+    catch (e) { toast("3D preview failed: " + e.message, "err"); }
+    load.remove();
+  }
+  // texture refs, with thumbnails through the existing tex png route
+  const texes = info.textures || [];
+  body.append(el("div", { class: "section-h" }, `Textures — ${texes.length}`));
+  if (texes.length) {
+    const t = el("table", { class: "mini" });
+    for (const tx of texes) {
+      const atex = tx.trim();
+      t.append(el("tr", {},
+        el("td", {}, el("img", { src: api.texPngUrl(atex, 0), loading: "lazy", style: "height:40px; max-width:120px; object-fit:contain; background:#222",
+          onerror: (ev) => { ev.target.style.display = "none"; } })),
+        el("td", {}, link(atex))));
+    }
+    body.append(t);
+  } else {
+    body.append(el("div", { class: "hint" }, "none"));
+  }
+}
+
+async function previewRaw(body, path) {
+  const ex = await api.exists(path);
+  body.innerHTML = "";
+  body.append(
+    el("div", { class: "kv" },
+      el("span", { class: "k" }, "exists"), el("span", { class: "v" }, ex.exists ? "yes" : "no — not in this game install"),
+    ),
+    ex.exists ? el("div", { class: "toolbar-row" },
+      el("a", { class: "btn primary", href: api.extractUrl(path), download: path.slice(path.lastIndexOf("/") + 1) }, "Extract raw")) : null,
+  );
+}
+
+const fmt3 = (v) => [v.x, v.y, v.z].map(n => +n.toFixed(2)).join(", ");
