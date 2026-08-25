@@ -6,6 +6,7 @@ import { api } from "../api.js";
 import { parseCsv } from "../csv.js";
 import { el, debounce, toast, spinner, crumbs } from "../ui.js";
 import { Viewport } from "../viewport.js";
+import { STAGE_PRESETS, STAGE_KEY_LABELS } from "../stages.js";
 
 let ttIndex = null;     // [{ id, name, place }]
 let activeVp = null;    // dispose on re-render
@@ -255,6 +256,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   }
 
   let mapLoaded = false; // after the first load, later swaps keep the camera
+  let stagesPromise = null; // /api/territory/{tt}/stages, fetched once per workspace (null on 404)
   async function loadMap(textured, force = false) {
     const gltfName = textured ? `map-${tt}-tex.gltf` : `map-${tt}.gltf`;
     await ensureComposed(textured, force);
@@ -308,6 +310,88 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     });
     allChk.addEventListener("change", () => checks.forEach(([c, ly]) => { c.checked = allChk.checked; ly.setVisible(allChk.checked); }));
     layersPanel.append(rows);
+    buildStagesSection(rows, checks, allChk);
+  }
+
+  // Stages: quest-progression compositions. Two data sources, both optional:
+  // - /api/territory/{tt}/stages (library layer-sets/filters CSVs): the LVB
+  //   filter keys; picking one evaluates each layer's FilterOp/FilterKeys
+  //   (visible iff None, or Match && key in keys, or NoMatch && key not in).
+  // - web/js/stages.js curated presets (e.g. 759 ruined/finished, where the
+  //   rebuild is not key-gated): flip only the listed LayerIds, leave the
+  //   rest untouched. Ids absent from the compose are silently skipped.
+  async function buildStagesSection(rows, checks, allChk) {
+    stagesPromise ??= api.stages(tt).catch(() => null);
+    const sd = await stagesPromise;
+    if (!rows.isConnected) return; // panel rebuilt (variant swap) while fetching
+    const curated = STAGE_PRESETS[tt];
+    const keys = sd?.keys?.length ? sd.keys : null;
+    if (!keys && !curated) return;
+    const syncAll = () => { allChk.checked = checks.every(([c]) => c.checked); };
+    const apply = (fn) => {
+      checks.forEach(([c, ly]) => {
+        const v = fn(ly);
+        if (v == null) return;
+        c.checked = v; ly.setVisible(v);
+      });
+      syncAll();
+    };
+    layersPanel.append(el("h3", {}, "Stages"));
+    let sel = null;
+    if (keys) {
+      const filterById = new Map((sd.filters || []).map(f => [f.layerId, f]));
+      sel = el("select", { style: "width:100%;margin:2px 0" },
+        el("option", { value: "" }, "(no filter \u2014 all layers)"),
+        ...keys.map(k => {
+          const lbl = STAGE_KEY_LABELS[tt]?.[k.key];
+          return el("option", { value: String(k.key) },
+            `key ${k.key} \u00b7 idx ${k.index}` +
+            (k.territoryTypeId !== tt ? ` \u00b7 tt ${k.territoryTypeId}` : "") +
+            (lbl ? ` \u00b7 ${lbl}` : ""));
+        }));
+      const applyKey = () => {
+        if (sel.value === "") { apply(() => true); return; }
+        const K = Number(sel.value);
+        apply(ly => {
+          if (ly.meta?.terrain) return true;
+          const f = filterById.get(ly.meta?.layerId);
+          if (!f) return true;
+          if (f.op === "Match") return f.keys.includes(K);
+          if (f.op === "NoMatch") return !f.keys.includes(K);
+          return true; // None or unknown op
+        });
+      };
+      sel.addEventListener("change", applyKey);
+      const step = (d) => {
+        const n = sel.options.length;
+        sel.selectedIndex = (sel.selectedIndex + d + n) % n;
+        applyKey();
+      };
+      const prev = el("button", { class: "vp-solo", title: "previous composition" }, "\u25c0");
+      const next = el("button", { class: "vp-solo", title: "next composition" }, "\u25b6");
+      prev.addEventListener("click", (e) => { e.preventDefault(); step(-1); });
+      next.addEventListener("click", (e) => { e.preventDefault(); step(1); });
+      layersPanel.append(el("div", { class: "sub", style: "margin:-2px 0 2px" },
+        `${keys.length} keyed composition${keys.length > 1 ? "s" : ""} (library layer-sets)`));
+      layersPanel.append(el("div", { style: "display:flex;gap:4px;align-items:center" }, prev, sel, next));
+    }
+    if (curated) {
+      const box = el("div", { style: "display:flex;gap:4px;flex-wrap:wrap;margin:4px 0" });
+      for (const p of curated.presets) {
+        const b = el("button", { class: "vp-solo", title: p.note || "" }, p.name);
+        b.addEventListener("click", (e) => {
+          e.preventDefault();
+          const show = new Set(p.show), hide = new Set(p.hide);
+          apply(ly => {
+            const id = ly.meta?.layerId;
+            return show.has(id) ? true : hide.has(id) ? false : null;
+          });
+          if (sel) sel.value = "";
+        });
+        box.append(b);
+      }
+      layersPanel.append(el("div", { class: "sub", style: "margin:2px 0 0" }, "curated presets"), box);
+    }
   }
 
   loading.querySelector("div:nth-child(2)").textContent = texOn ? "Composing textured map…" : "Composing map glTF…";

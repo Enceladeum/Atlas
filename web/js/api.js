@@ -52,6 +52,7 @@ export const api = {
   territory: (tt, refresh) => jget(`/api/territory/${tt}` + (refresh ? "?refresh=1" : "")),
   territoryFileUrl: (tt, name) => `${BASE}/api/territory/${tt}/file/${encodeURIComponent(name)}`,
   territoryFile: (tt, name) => tget(`/api/territory/${tt}/file/${encodeURIComponent(name)}`),
+  stages: (tt) => jget(`/api/territory/${tt}/stages`),
   collisionObjUrl: (tt) => `${BASE}/api/territory/${tt}/collision.obj`,
   mapGltfUrl: (tt, textured, refresh) => {
     const q = new URLSearchParams();

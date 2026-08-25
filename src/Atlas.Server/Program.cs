@@ -474,6 +474,22 @@ app.MapGet("/api/territory/{tt}", async (uint tt, int? refresh) =>
     return Results.Json(new { territory = tt, dir, files });
 });
 
+app.MapGet("/api/territory/{tt}/stages", (uint tt) =>
+{
+    // Stage/composition data from the xivtool library CSVs (layer-sets.csv +
+    // layer-filters.csv): the LVB layer-filter keys that select between keyed
+    // compositions of a zone (e.g. Terncliff 919's three states) plus each
+    // layer's FilterOp/FilterKeys. Op semantics are evaluated client-side;
+    // curated per-zone presets live in web/js/stages.js. 404 when the server
+    // runs without --library or the zone has no rows.
+    if (libraryDir == null)
+        return Results.NotFound(new { error = "server started without --library/ATLAS_LIBRARY" });
+    var sd = LayerStages.Load(libraryDir, tt);
+    return sd == null
+        ? Results.NotFound(new { error = "no stage data", territory = tt })
+        : Results.Json(new { keys = sd.Keys, filters = sd.Filters });
+});
+
 app.MapGet("/api/territory/{tt}/file/{**name}", (uint tt, string name) =>
 {
     // catch-all: the textured glTF references tex/<name>.png subpaths. Binary
