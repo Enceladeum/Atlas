@@ -34,6 +34,14 @@ export class Viewport {
     // surfaces), then re-seat the orbit pivot ahead of the camera. Orientation
     // is untouched, so the point under the cursor stays under the cursor.
     this.controls.enableZoom = false;
+    // Step size comes from the distance to the GEOMETRY under the cursor, not
+    // to the orbit target: after one close inspection the target sits at its
+    // 6-unit floor forever, so a target-based step crawls at the 2.5 floor
+    // even when the surface is 800 units away (felt as "deceleration is
+    // back"). The raycast is throttled (cursor moved or 150 ms) and the
+    // cached distance is decremented by applied steps in between; no-hit sky
+    // rays fall back to the orbit-target distance.
+    this._zoomSurf = { t: 0, x: 0, y: 0, d: Infinity };
     this._wheel = (e) => {
       e.preventDefault();
       const r = this.renderer.domElement.getBoundingClientRect();
@@ -43,12 +51,23 @@ export class Viewport {
       this._raycaster.setFromCamera(ndc, this.camera);
       const dir = this._raycaster.ray.direction;
       const dist = this.camera.position.distanceTo(this.controls.target);
-      const step = Math.max(dist * 0.22, 2.5) * (e.deltaY < 0 ? 1 : -1.25);
+      const c = this._zoomSurf, now = performance.now();
+      const roots = [this.mapRoot, this.collisionRoot].filter(o => o && o.visible);
+      if (roots.length && (now - c.t > 150 || Math.abs(e.clientX - c.x) > 3 || Math.abs(e.clientY - c.y) > 3)) {
+        const hits = this._raycaster.intersectObjects(roots, true);
+        c.d = hits.length ? hits[0].distance : Infinity;
+        c.t = now; c.x = e.clientX; c.y = e.clientY;
+      }
+      const base = Number.isFinite(c.d) ? c.d : dist;
+      const step = Math.max(base * 0.22, 2.5) * (e.deltaY < 0 ? 1 : -1.25);
+      if (Number.isFinite(c.d)) c.d -= step;
       this.camera.position.addScaledVector(dir, step);
       const view = new THREE.Vector3();
       this.camera.getWorldDirection(view);
-      this.controls.target.copy(this.camera.position)
-        .addScaledVector(view, Math.max(dist - step, 6));
+      // re-seat the orbit pivot at the surface if known, so orbiting after a
+      // zoom rotates around what you are looking at
+      const ahead = Number.isFinite(c.d) ? Math.max(c.d, 6) : Math.max(dist - step, 6);
+      this.controls.target.copy(this.camera.position).addScaledVector(view, ahead);
     };
     this.renderer.domElement.addEventListener("wheel", this._wheel, { passive: false });
 

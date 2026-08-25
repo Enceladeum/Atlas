@@ -263,6 +263,11 @@ details.drawer pre {
 }
 .vp-row:hover .vp-solo { visibility: visible; }
 .vp-solo:hover { color: var(--fg0); border-color: var(--accent); }
+.vp-stagebtn {
+  font-size: 10.5px; color: var(--fg1); background: none; border: 1px solid var(--bg3);
+  border-radius: 3px; padding: 1px 7px; cursor: pointer; font-family: var(--mono);
+}
+.vp-stagebtn:hover { color: var(--fg0); border-color: var(--accent); }
 .vp-overlays { top: 12px; left: 12px; padding-bottom: 4px; }
 .vp-overlays .vp-row { padding: 5px 12px; }
 .vp-find { top: 150px; left: 12px; width: 300px; max-height: min(46vh, 440px); display: flex; flex-direction: column; }

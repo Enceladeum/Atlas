@@ -337,8 +337,16 @@ async function renderWorkspace(main, tt, info, refresh = false) {
       syncAll();
     };
     layersPanel.append(el("h3", {}, "Stages"));
+    // keys that gate no composed layer (e.g. 759's populace-only 138739)
+    // would render a dead dropdown; say so instead of offering it
+    const composedIds = new Set(checks.map(([, ly]) => ly.meta?.layerId).filter(id => id != null));
+    const live = !!keys && (sd.filters || []).some(f =>
+      (f.op === "Match" || f.op === "NoMatch") && composedIds.has(f.layerId));
+    if (keys && !live)
+      layersPanel.append(el("div", { class: "sub", style: "margin:-2px 0 2px" },
+        `key${keys.length > 1 ? "s" : ""} ${keys.map(k => k.key).join(", ")} gate${keys.length > 1 ? "" : "s"} no composed geometry (populace/planevent only)`));
     let sel = null;
-    if (keys) {
+    if (keys && live) {
       const filterById = new Map((sd.filters || []).map(f => [f.layerId, f]));
       sel = el("select", { style: "width:100%;margin:2px 0" },
         el("option", { value: "" }, "(no filter \u2014 all layers)"),
@@ -367,8 +375,8 @@ async function renderWorkspace(main, tt, info, refresh = false) {
         sel.selectedIndex = (sel.selectedIndex + d + n) % n;
         applyKey();
       };
-      const prev = el("button", { class: "vp-solo", title: "previous composition" }, "\u25c0");
-      const next = el("button", { class: "vp-solo", title: "next composition" }, "\u25b6");
+      const prev = el("button", { class: "vp-stagebtn", title: "previous composition" }, "\u25c0");
+      const next = el("button", { class: "vp-stagebtn", title: "next composition" }, "\u25b6");
       prev.addEventListener("click", (e) => { e.preventDefault(); step(-1); });
       next.addEventListener("click", (e) => { e.preventDefault(); step(1); });
       layersPanel.append(el("div", { class: "sub", style: "margin:-2px 0 2px" },
@@ -378,7 +386,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     if (curated) {
       const box = el("div", { style: "display:flex;gap:4px;flex-wrap:wrap;margin:4px 0" });
       for (const p of curated.presets) {
-        const b = el("button", { class: "vp-solo", title: p.note || "" }, p.name);
+        const b = el("button", { class: "vp-stagebtn", title: p.note || "" }, p.name);
         b.addEventListener("click", (e) => {
           e.preventDefault();
           const show = new Set(p.show), hide = new Set(p.hide);
