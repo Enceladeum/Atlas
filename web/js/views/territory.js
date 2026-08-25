@@ -1,0 +1,300 @@
+// Territory workspace: picker (TerritoryType ⋈ PlaceName), workspace files,
+// and the 3D viewport (composed-map glTF + collision OBJ overlay, per-layer
+// toggles, identity-quadruple selection). Headless parity: atlas territory /
+// mod Pcb dump --obj / mod Map gltf.
+import { api } from "../api.js";
+import { parseCsv } from "../csv.js";
+import { el, debounce, toast, spinner, crumbs } from "../ui.js";
+import { Viewport } from "../viewport.js";
+
+let ttIndex = null;     // [{ id, name, place }]
+let activeVp = null;    // dispose on re-render
+
+async function loadTtIndex() {
+  if (ttIndex) return ttIndex;
+  const [ttCsv, pnCsv] = await Promise.all([
+    api.sheetCsv("TerritoryType"),
+    api.sheetCsv("PlaceName"),
+  ]);
+  const tt = parseCsv(ttCsv); const th = tt.shift();
+  const pn = parseCsv(pnCsv); const ph = pn.shift();
+  const pnName = new Map();
+  const pnNameIdx = ph.indexOf("Name");
+  for (const r of pn) pnName.set(r[0], r[pnNameIdx] || "");
+  const iName = th.indexOf("Name"), iPlace = th.indexOf("PlaceName");
+  ttIndex = tt
+    .filter(r => r[iName])
+    .map(r => ({ id: r[0], name: r[iName], place: pnName.get(r[iPlace]) || "" }));
+  return ttIndex;
+}
+
+export async function renderTerritory(view, params) {
+  crumbs("Territories");
+  if (activeVp) { activeVp.dispose(); activeVp = null; }
+  view.innerHTML = "";
+  const split = el("div", { class: "pane-split" });
+  const left = el("div", { class: "pane-left" });
+  const main = el("div", { class: "pane-main" });
+  split.append(left, main);
+  view.append(split);
+
+  // ---- picker ----
+  const sb = el("div", { class: "searchbox" });
+  const input = el("input", { type: "text", placeholder: "Filter territories…", autocomplete: "off", spellcheck: "false" });
+  sb.append(input);
+  const count = el("div", { class: "list-count" });
+  const list = el("div", { class: "list" });
+  left.append(sb, count, list);
+  list.append(spinner("Loading TerritoryType…"));
+
+  let idx = [];
+  try { idx = await loadTtIndex(); } catch (e) { toast("TerritoryType load failed: " + e.message, "err"); }
+
+  const renderList = (f) => {
+    f = (f || "").toLowerCase();
+    const hits = f ? idx.filter(t => t.id.includes(f) || t.name.toLowerCase().includes(f) || t.place.toLowerCase().includes(f)) : idx;
+    count.textContent = `${hits.length} / ${idx.length} territories`;
+    list.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    for (const t of hits.slice(0, 500)) {
+      frag.append(el("div", {
+        class: "list-item" + (t.id === params.tt ? " active" : ""),
+        title: `${t.id} ${t.name} — ${t.place}`,
+        onclick: () => { location.hash = `#/territory/${t.id}`; },
+      }, `${t.id}  ${t.name}`, t.place ? el("span", { style: "color:var(--fg2)" }, `  ${t.place}`) : null));
+    }
+    list.append(frag);
+    if (hits.length > 500) list.append(el("div", { class: "list-count" }, `… ${hits.length - 500} more`));
+  };
+  input.addEventListener("input", debounce(() => renderList(input.value), 120));
+  renderList();
+  queueMicrotask(() => list.querySelector(".active")?.scrollIntoView({ block: "center" }));
+
+  if (!params.tt) {
+    main.append(el("div", { class: "empty" },
+      el("div", {}, "Select a territory"),
+      el("div", { class: "hint" }, "Builds the full workspace (11 CSVs), then renders the composed map + collision")));
+    return;
+  }
+  await renderWorkspace(main, params.tt, idx.find(t => t.id === params.tt));
+}
+
+async function renderWorkspace(main, tt, info, refresh = false) {
+  crumbs("Territories", `${tt} ${info ? info.name : ""}`, info?.place || "");
+  main.innerHTML = "";
+
+  const tb = el("div", { class: "grid-toolbar" });
+  tb.append(
+    el("h2", {}, `${info?.place || "Territory"} `),
+    el("span", { class: "meta" }, `TT ${tt}${info ? " · " + info.name : ""}`),
+    el("span", { class: "spacer" }),
+    el("a", { class: "btn", href: api.collisionObjUrl(tt), download: `collision-${tt}.obj` }, "Collision OBJ"),
+    el("a", { class: "btn", href: api.mapGltfUrl(tt), download: `map-${tt}.gltf` }, "Map glTF"),
+    el("button", { class: "btn", onclick: () => renderWorkspace(main, tt, info, true), title: "Rebuild the cached workspace" }, "Refresh"),
+  );
+  main.append(tb);
+
+  // ---- workspace files ----
+  const filesWrap = el("div", { class: "tt-files" });
+  main.append(filesWrap);
+  const vpWrap = el("div", { class: "tt-main" });
+  main.append(vpWrap);
+  const loading = el("div", { class: "vp-loading" },
+    el("div", { class: "spinner" }), el("div", {}, "Building territory workspace…"),
+    el("div", { class: "sub" }, "first build parses every LGB layer; cached afterwards"));
+  vpWrap.append(loading);
+
+  let ws;
+  try { ws = await api.territory(tt, refresh); }
+  catch (e) {
+    loading.remove();
+    vpWrap.append(el("div", { class: "empty" }, el("div", {}, "Workspace build failed"), el("div", { class: "hint" }, e.message)));
+    return;
+  }
+
+  const drawer = el("details", { class: "drawer" });
+  drawer.append(el("summary", {}, `Workspace files — ${ws.files.length} artifacts (atlas territory ${tt})`));
+  const row = el("div", { class: "files-row" });
+  for (const f of ws.files) row.append(el("a", { class: "chip", href: api.territoryFileUrl(tt, f), download: f }, f));
+  drawer.append(row);
+  filesWrap.append(drawer);
+
+  // ---- viewport ----
+  const host = el("div", { class: "viewport-host" });
+  vpWrap.insertBefore(host, loading);
+
+  const selPanel = el("div", { class: "vp-panel vp-sel", style: "display:none" });
+  const statbar = el("div", { class: "vp-statbar" });
+  const overlays = el("div", { class: "vp-panel vp-overlays" });
+  const layersPanel = el("div", { class: "vp-panel vp-layers", style: "display:none" });
+  const findPanel = el("div", { class: "vp-panel vp-find" });
+  host.append(overlays, layersPanel, selPanel, statbar, findPanel);
+
+  const vp = new Viewport(host, {
+    onSelect: (sel) => {
+      if (!sel) { selPanel.style.display = "none"; return; }
+      selPanel.style.display = "";
+      selPanel.innerHTML = "";
+      const ex = sel.extras || {};
+      const quad = [ex.territoryId, ex.lgbFile, ex.layerId, ex.instanceId];
+      selPanel.append(
+        el("h3", {}, "Selection"),
+        el("div", { class: "body" },
+          el("div", { class: "k" }, "node"), el("div", { class: "v" }, sel.name || "(unnamed)"),
+          quad.every(v => v !== undefined) ? [
+            el("div", { class: "k" }, "identity (TerritoryId · LgbFile · LayerId · InstanceId)"),
+            el("div", { class: "v accent" }, quad.join(" · ")),
+          ] : Object.keys(ex).length ? [
+            el("div", { class: "k" }, "extras"),
+            el("div", { class: "v" }, JSON.stringify(ex)),
+          ] : [],
+          el("div", { class: "k" }, "point"),
+          el("div", { class: "v" }, [sel.point.x, sel.point.y, sel.point.z].map(n => n.toFixed(2)).join(", ")),
+          el("div", { style: "margin-top:8px; display:flex; gap:6px" },
+            el("button", { class: "btn", onclick: () => sel.focus() }, "Focus"),
+            quad.every(v => v !== undefined) ? el("button", { class: "btn", onclick: () => {
+              navigator.clipboard.writeText(quad.join(","));
+              toast("Identity copied");
+            } }, "Copy identity") : null),
+        ));
+    },
+  });
+  activeVp = vp;
+
+  // overlay toggles
+  let mapOn = true, colOn = false, colLoaded = false, texOn = false;
+  const mapChk = el("input", { type: "checkbox", checked: "" });
+  const colChk = el("input", { type: "checkbox" });
+  const texChk = el("input", { type: "checkbox" });
+  overlays.append(
+    el("h3", {}, "Overlays"),
+    el("label", { class: "vp-row" }, mapChk, el("span", { class: "n" }, "Map visual (glTF)")),
+    el("label", { class: "vp-row", title: `Compose with diffuse textures (map-${tt}-tex.gltf; first compose exports the PNGs, cached afterwards)` },
+      texChk, el("span", { class: "n" }, "Textured")),
+    el("label", { class: "vp-row" }, colChk, el("span", { class: "n" }, "Collision (OBJ)")),
+  );
+  texChk.addEventListener("change", async () => {
+    const want = texChk.checked;
+    texChk.disabled = true;
+    const l = el("div", { class: "vp-loading" }, el("div", { class: "spinner" }),
+      el("div", {}, want ? "Composing textured map…" : "Loading map…"),
+      el("div", { class: "sub" }, want ? "first compose exports diffuse PNGs; cached afterwards" : ""));
+    host.append(l);
+    try { await loadMap(want); texOn = want; }
+    catch (e) {
+      toast("Textured map failed: " + e.message, "err");
+      texChk.checked = texOn;
+      try { await loadMap(texOn); } catch { /* keep whatever renders */ }
+    }
+    l.remove(); texChk.disabled = false;
+  });
+  mapChk.addEventListener("change", () => { mapOn = mapChk.checked; vp.setMapVisible(mapOn); });
+  colChk.addEventListener("change", async () => {
+    colOn = colChk.checked;
+    if (colOn && !colLoaded) {
+      colChk.disabled = true;
+      const l = el("div", { class: "vp-loading" }, el("div", { class: "spinner" }), el("div", {}, "Loading collision mesh…"), el("div", { class: "sub" }, "first build walks every .pcb; cached afterwards"));
+      host.append(l);
+      try { await vp.loadCollisionObj(api.collisionObjUrl(tt)); colLoaded = true; }
+      catch (e) { toast("Collision load failed: " + e.message, "err"); colChk.checked = colOn = false; }
+      l.remove(); colChk.disabled = false;
+    }
+    vp.setCollisionVisible(colOn);
+  });
+
+  // ---- find assets (usage inventory: bg/sgb/vfx/sound placements) ----
+  const findHint = "search placements by asset path (e.g. tre, rock, _towe)";
+  const findInput = el("input", { type: "text", placeholder: "Find assets\u2026", autocomplete: "off", spellcheck: "false" });
+  const findCount = el("div", { class: "list-count" }, findHint);
+  const findRows = el("div", { class: "rows" });
+  findPanel.append(el("h3", {}, "Find"), el("div", { class: "vp-findbox" }, findInput), findCount, findRows);
+  let findSeq = 0;
+  const runFind = async () => {
+    const q = findInput.value.trim();
+    const seq = ++findSeq;
+    findRows.innerHTML = "";
+    if (q.length < 2) { findCount.textContent = findHint; return; }
+    findCount.textContent = "searching\u2026 (first search walks all 7 lgbs; cached afterwards)";
+    let res;
+    try { res = await api.usages({ q, tt, limit: 500 }); }
+    catch (e) { if (seq === findSeq) findCount.textContent = "search failed: " + e.message; return; }
+    if (seq !== findSeq) return;
+    const rows = res.rows || [];
+    findCount.textContent = rows.length
+      ? `${rows.length}${res.total > rows.length ? " / " + res.total : ""} placements \u2014 click to fly`
+      : "no placements match";
+    const frag = document.createDocumentFragment();
+    for (const r of rows) {
+      frag.append(el("div", {
+        class: "vp-hit",
+        title: `${r.asset}${r.via ? "\nvia " + r.via : ""}\n${r.lgbFile} \u00b7 layer ${r.layerId} \u00b7 instance ${r.instanceId}\n${r.x.toFixed(2)}, ${r.y.toFixed(2)}, ${r.z.toFixed(2)}`,
+        onclick: () => vp.flyTo(r.x, r.y, r.z),
+      },
+        el("span", { class: "n" }, (r.asset.split("/").pop() || r.asset) + (r.via ? " \u2299" : "")),
+        el("span", { class: "c" }, `${r.x.toFixed(0)},${r.z.toFixed(0)}`)));
+    }
+    findRows.append(frag);
+  };
+  findInput.addEventListener("input", debounce(runFind, 300));
+
+  // map glTF loading. Everything loads through the file route so the glTF's
+  // relative URIs (.bin, tex/*.png) resolve next to it; ensureComposed() first
+  // hits the map.gltf route (compose + cache) when the file is missing.
+  async function ensureComposed(textured, gltfName) {
+    if (ws.files.includes(gltfName)) return;
+    const url = api.mapGltfUrl(tt, textured);
+    let r = null;
+    try { r = await fetch(url, { method: "HEAD" }); } catch { /* fall through to GET */ }
+    if (!r || r.status === 405) { r = await fetch(url); try { r.body?.cancel(); } catch { /* drained */ } }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    ws.files.push(gltfName);
+  }
+
+  async function loadMap(textured) {
+    const gltfName = textured ? `map-${tt}-tex.gltf` : `map-${tt}.gltf`;
+    await ensureComposed(textured, gltfName);
+    const layers = await vp.loadMapGltf(api.territoryFileUrl(tt, gltfName));
+    vp.setMapVisible(mapOn);
+    buildLayersPanel(layers);
+  }
+
+  function buildLayersPanel(layers) {
+    if (!layers.length) { layersPanel.style.display = "none"; return; }
+    layersPanel.style.display = "";
+    layersPanel.innerHTML = "";
+    layersPanel.append(el("h3", {}, `Layers — ${layers.length}`));
+    const rows = el("div", { class: "rows" });
+    const allChk = el("input", { type: "checkbox", checked: "" });
+    rows.append(el("label", { class: "vp-row" }, allChk, el("span", { class: "n", style: "font-weight:600" }, "all layers")));
+    const checks = layers.map(ly => {
+      const c = el("input", { type: "checkbox", checked: "" });
+      c.addEventListener("change", () => ly.setVisible(c.checked));
+      rows.append(el("label", { class: "vp-row" }, c, el("span", { class: "n", title: ly.name }, ly.name), el("span", { class: "c" }, ly.count)));
+      return [c, ly];
+    });
+    allChk.addEventListener("change", () => checks.forEach(([c, ly]) => { c.checked = allChk.checked; ly.setVisible(allChk.checked); }));
+    layersPanel.append(rows);
+  }
+
+  loading.querySelector("div:nth-child(2)").textContent = "Composing map glTF…";
+  loading.querySelector(".sub").textContent = "bg.lgb → one scene; first compose takes ~30 s, cached afterwards";
+  try {
+    await loadMap(false);
+    loading.remove();
+  } catch (e) {
+    loading.remove();
+    toast("Map compose/load failed: " + e.message, "err");
+    // still usable with collision only
+    colChk.checked = true;
+    colChk.dispatchEvent(new Event("change"));
+  }
+
+  // stats
+  const statTick = () => {
+    if (activeVp !== vp) return;
+    const s = vp.stats();
+    statbar.textContent = `draws ${s.calls} · tris ${(s.tris / 1e6).toFixed(2)}M`;
+    setTimeout(statTick, 1000);
+  };
+  statTick();
+}

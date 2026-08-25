@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Atlas.Core/Atlas.Core.csproj" />
+    <Project Path="src/atlas/atlas.csproj" />
+    <Project Path="src/Atlas.Server/Atlas.Server.csproj" />
+    <Project Path="src/Atlas.App/Atlas.App.csproj" />
+  </Folder>
+</Solution>

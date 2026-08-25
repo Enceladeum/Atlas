@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Atlas.Core</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Lumina: source ProjectReference by default (LuminaRoot), or prebuilt dll (LuminaDll) for
+         parallel-agent builds. Sandbox: export LuminaRoot=/path/to/Lumina-master or
+         LuminaDll=/path/to/Lumina.dll -->
+    <LuminaRoot Condition="'$(LuminaRoot)'==''">$(MSBuildThisFileDirectory)../../../Lumina-master</LuminaRoot>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(LuminaDll)'==''">
+    <ProjectReference Include="$(LuminaRoot)/src/Lumina/Lumina.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(LuminaDll)'!=''">
+    <Reference Include="Lumina">
+      <HintPath>$(LuminaDll)</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

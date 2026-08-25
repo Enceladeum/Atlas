@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Atlas.App - thin WebView2 desktop shell around Atlas.Server (CONTRACT:
+       the server IS the app; this is a window around http://localhost:<port>).
+       Windows-only OUTPUT (net10.0-windows, WinForms hosts the WebView2
+       control); EnableWindowsTargeting lets the Linux sandbox compile it for
+       CI parity. Run/verify on Windows: dotnet build -c Release, needs the
+       WebView2 Runtime (preinstalled on Win11 / Edge machines). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Atlas.App</RootNamespace>
+    <AssemblyName>Atlas.App</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+</Project>

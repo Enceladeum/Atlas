@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Atlas.Server</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Atlas.Core/Atlas.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(LuminaDll)'!=''">
+    <Reference Include="Lumina">
+      <HintPath>$(LuminaDll)</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../Atlas.Core/Lgb/leveldirs.txt" Link="leveldirs.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

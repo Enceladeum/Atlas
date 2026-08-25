@@ -1,0 +1,13 @@
+<Project>
+  <!-- Agent isolation: export OutRoot=/path/to/out/<agent>/ to build into a private tree.
+       Unset => normal per-project bin/obj. -->
+  <PropertyGroup Condition="'$(OutRoot)'!=''">
+    <BaseIntermediateOutputPath>$(OutRoot)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(OutRoot)bin/$(MSBuildProjectName)/</BaseOutputPath>
+  </PropertyGroup>
+  <!-- The copied-from-xivtool stale bin/obj cannot be deleted through the sandbox mount; exclude
+       them from the compile glob unconditionally so they can never pollute a build. -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>
