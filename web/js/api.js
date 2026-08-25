@@ -53,7 +53,13 @@ export const api = {
   territoryFileUrl: (tt, name) => `${BASE}/api/territory/${tt}/file/${encodeURIComponent(name)}`,
   territoryFile: (tt, name) => tget(`/api/territory/${tt}/file/${encodeURIComponent(name)}`),
   collisionObjUrl: (tt) => `${BASE}/api/territory/${tt}/collision.obj`,
-  mapGltfUrl: (tt, textured) => `${BASE}/api/territory/${tt}/map.gltf${textured ? "?textured=1" : ""}`,
+  mapGltfUrl: (tt, textured, refresh) => {
+    const q = new URLSearchParams();
+    if (textured) q.set("textured", "1");
+    if (refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return `${BASE}/api/territory/${tt}/map.gltf` + (qs ? "?" + qs : "");
+  },
   usages: ({ q, tt, limit } = {}) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);

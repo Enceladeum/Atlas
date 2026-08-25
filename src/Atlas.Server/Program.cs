@@ -520,9 +520,10 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
     // built by an older server lack the marker and are rebuilt once.
     const string MapFormatVersion = "3"; // 2=terrain bgplates, 3=layer extras
     var genFile = Path.Combine(dir, $"{stem}.gen");
-    if (refresh == 1 || !File.Exists(gltf)
-        || !File.Exists(genFile) || File.ReadAllText(genFile).Trim() != MapFormatVersion)
+    var gen = File.Exists(genFile) ? File.ReadAllText(genFile).Trim() : "(none)";
+    if (refresh == 1 || !File.Exists(gltf) || gen != MapFormatVersion)
     {
+        Console.WriteLine($"map {tt}{(textured == 1 ? " tex" : "")}: recompose (refresh={refresh == 1}, had gen {gen}, want {MapFormatVersion})");
         Directory.CreateDirectory(dir);
         await WithEnv<object?>(e =>
         {
@@ -531,6 +532,7 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
         });
         File.WriteAllText(genFile, MapFormatVersion);
     }
+    else Console.WriteLine($"map {tt}{(textured == 1 ? " tex" : "")}: cached (gen {gen})");
     return File.Exists(gltf)
         ? Results.Stream(File.OpenRead(gltf), "model/gltf+json")
         : Results.NotFound(new { error = "compose produced no gltf", territory = tt });

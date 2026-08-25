@@ -90,7 +90,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     el("span", { class: "spacer" }),
     el("a", { class: "btn", href: api.collisionObjUrl(tt), download: `collision-${tt}.obj` }, "Collision OBJ"),
     el("a", { class: "btn", href: api.mapGltfUrl(tt), download: `map-${tt}.gltf` }, "Map glTF"),
-    el("button", { class: "btn", onclick: () => renderWorkspace(main, tt, info, true), title: "Rebuild the cached workspace" }, "Refresh"),
+    el("button", { class: "btn", onclick: () => renderWorkspace(main, tt, info, true), title: "Rebuild the cached workspace AND recompose the map glTF" }, "Refresh"),
   );
   main.append(tb);
 
@@ -237,22 +237,24 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   };
   findInput.addEventListener("input", debounce(runFind, 300));
 
-  // map glTF loading. Everything loads through the file route so the glTF's
-  // relative URIs (.bin, tex/*.png) resolve next to it; ensureComposed() first
-  // hits the map.gltf route (compose + cache) when the file is missing.
-  async function ensureComposed(textured, gltfName) {
-    if (ws.files.includes(gltfName)) return;
-    const url = api.mapGltfUrl(tt, textured);
+  // map glTF loading. The final load goes through the file route so the glTF's
+  // relative URIs (.bin, tex/*.png) resolve next to it — but ensureComposed()
+  // ALWAYS hits the map.gltf route first, because that route owns the format-
+  // version check (.gen sidecar) and recomposes stale caches. Skipping it when
+  // the file already existed is how pre-terrain maps got served forever (958).
+  // force=true (Refresh button) passes refresh=1 for an unconditional recompose.
+  async function ensureComposed(textured, force) {
+    const url = api.mapGltfUrl(tt, textured, force);
     let r = null;
     try { r = await fetch(url, { method: "HEAD" }); } catch { /* fall through to GET */ }
     if (!r || r.status === 405) { r = await fetch(url); try { r.body?.cancel(); } catch { /* drained */ } }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    ws.files.push(gltfName);
   }
 
-  async function loadMap(textured) {
+  async function loadMap(textured, force = false) {
     const gltfName = textured ? `map-${tt}-tex.gltf` : `map-${tt}.gltf`;
-    await ensureComposed(textured, gltfName);
+    await ensureComposed(textured, force);
+    if (!ws.files.includes(gltfName)) ws.files.push(gltfName);
     const layers = await vp.loadMapGltf(api.territoryFileUrl(tt, gltfName));
     vp.setMapVisible(mapOn);
     buildLayersPanel(layers);
@@ -306,7 +308,7 @@ async function renderWorkspace(main, tt, info, refresh = false) {
   loading.querySelector("div:nth-child(2)").textContent = "Composing map glTF…";
   loading.querySelector(".sub").textContent = "bg.lgb → one scene; first compose takes ~30 s, cached afterwards";
   try {
-    await loadMap(false);
+    await loadMap(false, refresh);
     loading.remove();
   } catch (e) {
     loading.remove();
