@@ -40,6 +40,9 @@ export const api = {
   mdlGltfUrl: (path, lod = 0, textured = false) =>
     `${BASE}/api/mdl/gltf?path=${encodeURIComponent(path)}&lod=${lod}` + (textured ? "&textured=1" : ""),
   mtrl: (path) => jget(`/api/mtrl?path=${encodeURIComponent(path)}`),
+  charaImc: (path) => jget(`/api/chara/imc?path=${encodeURIComponent(path)}`),
+  charaResolve: (path, variant) =>
+    jget(`/api/chara/resolve?path=${encodeURIComponent(path)}` + (variant != null ? `&variant=${variant}` : "")),
   texInfo: (path) => jget(`/api/tex/info?path=${encodeURIComponent(path)}`),
   texPngUrl: (path, mip = 0) => `${BASE}/api/tex/png?path=${encodeURIComponent(path)}&mip=${mip}`,
   scdInfo: (path) => jget(`/api/scd/info?path=${encodeURIComponent(path)}`),

@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Atlas.Core;
 using Atlas.Core.Avfx;
+using Atlas.Core.Chara;
 using Atlas.Core.Compose;
 using Atlas.Core.Deps;
 using Atlas.Core.Exd;
@@ -151,6 +152,23 @@ app.MapGet("/api/mdl/gltf", async (string path, int? lod, int? textured, int? te
     var r = await WithEnv(e => MdlGltf.BuildEmbedded(e, path, new MdlGltfOptions
     { Lod = lod ?? 0, Textured = textured == 1, MaxTexDim = texsize ?? 1024 }));
     return Results.Text(r.Json, "model/gltf+json");
+});
+
+// ---- chara equipment resolver ----
+app.MapGet("/api/chara/imc", async (string path) =>
+{
+    try { return Results.Json(await WithEnv(e => CharaOps.LoadImc(e, path))); }
+    catch (FileNotFoundException) { return Results.NotFound(new { error = "not found", path }); }
+    catch (InvalidDataException ex) { return Results.BadRequest(new { error = ex.Message, path }); }
+});
+
+app.MapGet("/api/chara/resolve", async (string path, int? variant) =>
+{
+    // chara .mdl -> imc variants -> concrete existence-checked mtrl paths.
+    try { return Results.Json(await WithEnv(e => CharaOps.Resolve(e, path, variant))); }
+    catch (FileNotFoundException ex) { return Results.NotFound(new { error = ex.Message, path }); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
+    { return Results.BadRequest(new { error = ex.Message, path }); }
 });
 
 // ---- scd (sound) previews ----

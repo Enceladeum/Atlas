@@ -285,6 +285,34 @@ async function previewMdl(body, path) {
       el("a", { class: "btn", href: api.extractUrl(path), download: path.slice(path.lastIndexOf("/") + 1) }, "Extract .mdl"),
     ),
   );
+  // ---- imc variants (chara equipment resolver) ----
+  if (path.startsWith("chara/")) {
+    const vwrap = el("div", {});
+    body.append(vwrap);
+    api.charaResolve(path).then((r) => {
+      if (!vwrap.isConnected || !r.variants?.length) return;
+      vwrap.append(el("div", { class: "section-h" }, `Variants (imc) 0..${r.imcCount}`));
+      const sel = el("select", { class: "btn" });
+      for (const v of r.variants)
+        sel.append(el("option", { value: v.variant },
+          `v${v.variant} \u00b7 mat ${v.entry.materialId}${v.entry.vfxId ? ` \u00b7 vfx ${v.entry.vfxId}` : ""}`));
+      const list = el("div", {});
+      const show = () => {
+        const v = r.variants.find((x) => String(x.variant) === sel.value) || r.variants[0];
+        list.innerHTML = "";
+        const row = (ok, pth) => el("div", { class: "hint" },
+          ok ? el("a", { href: `#/assets/${encodeURIComponent(pth)}` }, pth)
+             : el("span", { title: "not in game data" }, pth + " \u2717"));
+        for (const m of v.mtrls) list.append(row(m.exists, m.path));
+        if (v.vfxPath) list.append(row(v.vfxExists, v.vfxPath));
+      };
+      if (r.variants.some((x) => x.variant === 1)) sel.value = "1";
+      vwrap.append(el("div", { class: "toolbar-row" }, sel), list);
+      show();
+      sel.addEventListener("change", show);
+    }).catch(() => {});
+  }
+
   // 3D preview
   const host = el("div", { class: "mini-vp" });
   body.append(host);
