@@ -262,14 +262,41 @@ async function renderWorkspace(main, tt, info, refresh = false) {
     if (!layers.length) { layersPanel.style.display = "none"; return; }
     layersPanel.style.display = "";
     layersPanel.innerHTML = "";
-    layersPanel.append(el("h3", {}, `Layers — ${layers.length}`));
+    // Stage inspector: many zones ship several stages of the same map as
+    // separate LGB layers (Doman Enclave rebuild, festival dressing). Badges
+    // come from compose extras (festival id.phase, layer-set ids, temporary);
+    // "solo" isolates one layer plus terrain to reconstruct a single stage.
+    const disp = (ly) => ly.meta?.layer || ly.name.replace(/^layer-\d+-/, "");
+    layers.sort((x, y) => ((y.meta?.terrain ? 1 : 0) - (x.meta?.terrain ? 1 : 0)) || disp(x).localeCompare(disp(y)));
+    const nFest = layers.filter(l => l.meta?.festivalId > 0).length;
+    const nSets = layers.filter(l => l.meta?.layerSets?.length).length;
+    const nTmp = layers.filter(l => l.meta?.temporary).length;
+    const flags = [nFest && `${nFest} festival`, nSets && `${nSets} set-flagged`, nTmp && `${nTmp} temporary`].filter(Boolean).join(" \u00b7 ");
+    layersPanel.append(el("h3", {}, `Layers \u2014 ${layers.length}`));
+    if (flags) layersPanel.append(el("div", { class: "sub", style: "margin:-2px 0 4px" }, flags));
     const rows = el("div", { class: "rows" });
     const allChk = el("input", { type: "checkbox", checked: "" });
     rows.append(el("label", { class: "vp-row" }, allChk, el("span", { class: "n", style: "font-weight:600" }, "all layers")));
     const checks = layers.map(ly => {
       const c = el("input", { type: "checkbox", checked: "" });
       c.addEventListener("change", () => ly.setVisible(c.checked));
-      rows.append(el("label", { class: "vp-row" }, c, el("span", { class: "n", title: ly.name }, ly.name), el("span", { class: "c" }, ly.count)));
+      const m = ly.meta || {};
+      const badges = [];
+      if (m.terrain) badges.push("base");
+      if (m.festivalId > 0) badges.push(`f${m.festivalId}${m.festivalPhase ? "." + m.festivalPhase : ""}`);
+      if (m.layerSets?.length) badges.push(`set ${m.layerSets.join(",")}`);
+      if (m.temporary) badges.push("tmp");
+      if (m.housing) badges.push("housing");
+      const solo = el("button", { class: "vp-solo", title: "show only this layer (plus terrain)" }, "solo");
+      solo.addEventListener("click", (e) => {
+        e.preventDefault();
+        checks.forEach(([cc, ll]) => { cc.checked = ll === ly || !!ll.meta?.terrain; ll.setVisible(cc.checked); });
+        allChk.checked = false;
+      });
+      rows.append(el("label", { class: "vp-row" }, c,
+        el("span", { class: "n", title: `${disp(ly)} \u00b7 layerId ${m.layerId ?? "?"} \u00b7 ${ly.count} instances` }, disp(ly)),
+        ...badges.map(b => el("span", { class: "vp-badge" }, b)),
+        el("span", { class: "c" }, ly.count), solo));
       return [c, ly];
     });
     allChk.addEventListener("change", () => checks.forEach(([c, ly]) => { c.checked = allChk.checked; ly.setVisible(allChk.checked); }));

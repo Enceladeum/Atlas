@@ -253,6 +253,16 @@ details.drawer pre {
 .vp-row .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vp-row .c { color: var(--fg2); font-size: 10.5px; }
 .vp-row input { accent-color: var(--accent); margin: 0; }
+.vp-badge {
+  font-size: 9.5px; color: var(--fg2); border: 1px solid var(--bg3);
+  border-radius: 3px; padding: 0 4px; white-space: nowrap;
+}
+.vp-solo {
+  font-size: 9.5px; color: var(--fg2); background: none; border: 1px solid var(--bg3);
+  border-radius: 3px; padding: 0 4px; cursor: pointer; visibility: hidden;
+}
+.vp-row:hover .vp-solo { visibility: visible; }
+.vp-solo:hover { color: var(--fg0); border-color: var(--accent); }
 .vp-overlays { top: 12px; left: 12px; padding-bottom: 4px; }
 .vp-overlays .vp-row { padding: 5px 12px; }
 .vp-find { top: 150px; left: 12px; width: 300px; max-height: min(46vh, 440px); display: flex; flex-direction: column; }

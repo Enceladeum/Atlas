@@ -157,6 +157,7 @@ export class Viewport {
       name: g.name || "(unnamed)",
       count: g.children.length,
       visible: g.visible,
+      meta: g.userData || {},  // compose layer extras: layer, layerId, festivalId/Phase, layerSets, terrain
       setVisible: (v) => { g.visible = v; },
     }));
   }

@@ -508,9 +508,9 @@ app.MapGet("/api/territory/{tt}/map.gltf", async (uint tt, int? refresh, int? te
     var dir = TtDir(tt);
     var stem = textured == 1 ? $"map-{tt}-tex" : $"map-{tt}";
     var gltf = Path.Combine(dir, $"{stem}.gltf");
-    // Cache-buster: composed-map format version (2 = terrain bgplates). Maps
+    // Cache-buster: composed-map format version (see const). Maps
     // built by an older server lack the marker and are rebuilt once.
-    const string MapFormatVersion = "2";
+    const string MapFormatVersion = "3"; // 2=terrain bgplates, 3=layer extras
     var genFile = Path.Combine(dir, $"{stem}.gen");
     if (refresh == 1 || !File.Exists(gltf)
         || !File.Exists(genFile) || File.ReadAllText(genFile).Trim() != MapFormatVersion)

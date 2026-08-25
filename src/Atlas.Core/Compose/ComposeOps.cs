@@ -242,7 +242,19 @@ public static class ComposeOps
             {
                 if (layerNode < 0)
                 {
-                    layerNode = w.AddNode($"layer-{layer.LayerId}-{layer.Name ?? ""}");
+                    // Stage-inspector metadata: the GUI reads these off the group's
+                    // userData to badge festival/layer-set/temporary layers.
+                    var lex = new Dictionary<string, object?>
+                    {
+                        ["layer"] = layer.Name ?? "", ["layerId"] = layer.LayerId,
+                        ["festivalId"] = (uint)layer.FestivalID,
+                        ["festivalPhase"] = (uint)layer.FestivalPhaseID,
+                    };
+                    if (layer.IsTemporary != 0) lex["temporary"] = true;
+                    if (layer.IsHousing != 0) lex["housing"] = true;
+                    if (layer.LayerSetReferences is { Length: > 0 })
+                        lex["layerSets"] = layer.LayerSetReferences.Select(r => r.LayerSetId).ToArray();
+                    layerNode = w.AddNode($"layer-{layer.LayerId}-{layer.Name ?? ""}", extras: lex);
                     w.AddChild(root, layerNode);
                     sum.Layers++;
                 }
@@ -312,7 +324,12 @@ public static class ComposeOps
                     var asset = $"{bgplateDir}/{i:d4}.mdl";
                     var mesh = GetMesh(asset);
                     if (mesh == null) { sum.TerrainMissing++; continue; }
-                    if (terrainNode < 0) { terrainNode = w.AddNode("terrain"); w.AddChild(root, terrainNode); }
+                    if (terrainNode < 0)
+                 {
+                     terrainNode = w.AddNode("terrain", extras: new Dictionary<string, object?>
+                     { ["layer"] = "terrain", ["layerId"] = 0u, ["terrain"] = true });
+                     w.AddChild(root, terrainNode);
+                 }
                     var n = w.AddNode($"plate_{i:d4}",
                         new Vector3(plateSize * (px + 0.5f), 0f, plateSize * (py + 0.5f)), null, null,
                         mesh, new Dictionary<string, object?>
