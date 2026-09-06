@@ -1,7 +1,7 @@
 // Atlas.Server — HTTP API over Atlas.Core + static host for web/.
 // Second headless surface: everything the GUI can do is a curl-able route.
 // Contract: Server calls Core only; it never parses game files itself and never
-// shells out to the CLI (CONTRACT.md, Server/API boundary).
+// shells out to the CLI (Server/API boundary).
 //
 // Args/env: --game|ATLAS_GAME  --schema|ATLAS_SCHEMA  --library|ATLAS_LIBRARY
 //           --web|ATLAS_WEB  --work|ATLAS_WORK  --port|ATLAS_PORT (default 8780)

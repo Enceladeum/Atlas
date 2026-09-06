@@ -7,15 +7,13 @@ API).
 
 **Provenance.** Forked 2026-08-24 from `xivtool/src` (the consolidation port of
 the LgbDump/CutScan/LgbCheck lineage). The port is byte-identical to xivtool on
-golden outputs (see CONTRACT.md, Acceptance). `xivtool` remains the tool of
+golden outputs. `xivtool` remains the tool of
 record for the per-patch intake/diff pipeline; Atlas is the inspection/preview
 surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps).
 
 ## Layout
 
     Atlas.slnx
-    CONTRACT.md          binding engineering contract — read before writing code
-    VERIFY.md            what was verified where + 5-minute GUI walkthrough
     src/Atlas.Core/      all parsing (classlib, no console I/O)
     src/atlas/           CLI (`atlas`) — thin dispatch over Core
     src/Atlas.Server/    ASP.NET minimal API + static host for web/
@@ -98,8 +96,7 @@ surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps
 Windows: `dotnet build Atlas.slnx -c Release` at the repo root — Lumina is
 source-referenced from `../../../Lumina-master` by default (`-p:LuminaRoot=` /
 `-p:LuminaDll=` to override). Always name the slnx: a bare `dotnet build` inside
-`src/` fails (no project in cwd). Sandbox recipe and output-redirect rules:
-CONTRACT.md, Build.
+`src/` fails (no project in cwd).
 
 ## Product dist
 
@@ -111,8 +108,7 @@ run of `Atlas.App.exe` asks for the game folder and persists it to
 `%LOCALAPPDATA%\Atlas\settings.json`; `atlas gui` and later runs reuse it
 (`--game`/`ATLAS_GAME` always override; only picker-supplied paths persist).
 
-The live checkout (git) is `<your Atlas checkout>` - launch
-`dist\` from there; `<a local mirror>` is a cold mirror. Every
+Every
 binary bakes a UTC build stamp shown in the App title bar, the web rail badge,
 `atlas --version`, and `/api/meta` - a stale dist identifies itself.
 
@@ -161,5 +157,9 @@ With neither `--game` nor env set, `atlas gui` and `Atlas.App` fall back to the
 picker-saved `settings.json`; the server finds `web/` beside its own exe when
 `ATLAS_WEB` is absent (the dist layout).
 
-Feature plan and phasing: `../atlas-spec.md`. Verification status: `VERIFY.md`.
+## License
+
+Atlas is released under the MIT License (see `LICENSE`). It bundles
+[three.js](https://threejs.org/) under `web/vendor/`, also MIT (see
+`web/vendor/three.LICENSE`).
 

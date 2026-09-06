@@ -1,7 +1,7 @@
 namespace Atlas.Core;
 
 /// <summary>
-/// The shared identity rule (CONTRACT.md): every instance-scoped row carries
+/// The shared identity rule: every instance-scoped row carries
 /// (TerritoryId, LgbFile, LayerId, InstanceId) — the same InstanceKey identity
 /// runtime consumers use at runtime, so offline rows map 1:1 onto runtime action.
 /// </summary>

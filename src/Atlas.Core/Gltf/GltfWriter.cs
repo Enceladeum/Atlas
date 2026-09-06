@@ -1,6 +1,6 @@
 // GltfWriter - minimal, dependency-free glTF 2.0 writer (System.Text.Json + one
 // external .bin buffer). New module (no xivtool ancestor): acceptance =
-// reference-implementation per CONTRACT.md (clean three.js/Blender import).
+// reference-implementation (clean three.js/Blender import).
 //
 // Scope (v1): asset/scene/nodes (TRS; rotation as quaternion XYZW), meshes with
 // POSITION+NORMAL+TEXCOORD_0 float accessors + uint32 SCALAR indices, materials

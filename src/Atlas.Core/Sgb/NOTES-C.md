@@ -42,7 +42,7 @@ Full regeneration in 2 chunks ([0,5000) + [5000,10103) --append):
 - Names: layer/instance names have `,` replaced by `;` (no CSV quoting) — legacy
   CutScan convention kept because golden diffs are textual. Do not "fix".
 - Identity rule: sgb-layouts is game-wide (not territory-scoped); carries none of
-  TerritoryId/LgbFile/LayerId/InstanceId, per the CONTRACT exception for
+  TerritoryId/LgbFile/LayerId/InstanceId, per the documented exception for
   pre-rule goldens. Nesting (SharedGroup members referencing other sgbs, 19.6k
   refs) is NOT expanded inline — consumers resolve recursively by joining
   AssetPath back onto the Sgb column, exactly as documented in dumps/README.md.

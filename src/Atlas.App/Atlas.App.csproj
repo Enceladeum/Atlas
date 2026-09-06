@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Atlas.App - thin WebView2 desktop shell around Atlas.Server (CONTRACT:
-       the server IS the app; this is a window around http://localhost:<port>).
+  <!-- Atlas.App - thin WebView2 desktop shell around Atlas.Server
+       (the server IS the app; this is a window around http://localhost:<port>).
        Windows-only OUTPUT (net10.0-windows, WinForms hosts the WebView2
        control); EnableWindowsTargeting lets the Linux sandbox compile it for
        CI parity. Run/verify on Windows: dotnet build -c Release, needs the

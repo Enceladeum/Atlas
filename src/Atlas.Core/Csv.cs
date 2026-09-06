@@ -4,7 +4,7 @@ using Lumina.Text.ReadOnly;
 namespace Atlas.Core;
 
 /// <summary>
-/// The single CSV convention implementation (see CONTRACT.md). Do not re-implement
+/// The single CSV convention implementation. Do not re-implement
 /// escaping or value formatting in module code.
 /// </summary>
 public static class Csv

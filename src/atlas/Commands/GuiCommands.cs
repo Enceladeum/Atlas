@@ -3,7 +3,7 @@
 // settings-supplied ATLAS_LIBRARY/ATLAS_PATHS in its environment, remaining args
 // forwarded verbatim), waits for
 // /api/meta, then opens the default browser. Atlas.App is the WebView2 desktop
-// variant of the exact same flow. Headless parity (CONTRACT): gui adds nothing
+// variant of the exact same flow. Headless parity: gui adds nothing
 // of its own - everything it shows is the web/ frontend over the same HTTP API.
 // Server discovery: --server wins; else Atlas.Server.exe/.dll next to atlas;
 // else the sibling project dir (last "/atlas/" path segment -> "/Atlas.Server/",

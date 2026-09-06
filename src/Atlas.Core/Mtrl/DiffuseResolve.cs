@@ -1,5 +1,5 @@
 // DiffuseResolve - the shared "which texture is this material's diffuse?" rule.
-// Single home for the sampler-priority contract (CONTRACT.md, Acceptance):
+// Single home for the sampler-priority contract:
 // g_SamplerColorMap0 -> g_SamplerDiffuse -> *_d.tex -> first .tex; "dummy"
 // paths excluded; mip capped so max(width,height)>>mip <= maxDim (0 = mip 0).
 // Consumers: Compose (whole-map textured export) and Mdl (single-model glTF) -

@@ -1,6 +1,6 @@
 // ComposeOps - composed-map assembly: one territory's bg layout -> one glTF scene.
-// New module (no xivtool ancestor): reference-implementation acceptance
-// (CONTRACT.md) - Blender/three.js import + bbox overlap with the Pcb collision
+// New module (no xivtool ancestor): reference-implementation acceptance -
+// Blender/three.js import + bbox overlap with the Pcb collision
 // OBJ for the same territory.
 //
 // v1 scope: bg.lgb + terrain bgplates (planmap etc. later, flag-gated). BGPart instances whose
@@ -20,7 +20,7 @@
 // g_SamplerColorMap0 / g_SamplerDiffuse / *_d.tex priority) is exported once to {outDir}/tex/*.png
 // (mip capped at MaxTexDim) and wired as baseColorTexture (alphaMode MASK for
 // foliage cutouts); output becomes map-{label}-tex.gltf/.bin. The untextured
-// default filenames and bytes stay golden-identical (ADDITIVE, CONTRACT).
+// default filenames and bytes stay golden-identical (ADDITIVE).
 //
 // Terrain (opts.Terrain, default on): {zoneBase}/bgplate/terrain.tera - 52-byte
 // header (version 0x01000003 u32, plateCount u32, plateSize u32 yalms, rest

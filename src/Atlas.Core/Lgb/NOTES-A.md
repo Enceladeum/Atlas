@@ -26,7 +26,7 @@ Timing (sandbox): `sets`/`filters` full 638 dirs in one 45 s call; `layers`/`ins
 ## Provenance of the "lost" builders
 
 layers.csv/instances.csv were built by the old sandbox xivtool `lgbindex` command.
-CONTRACT.md said the builder was lost with LgbCheck, but it survives verbatim in the
+An earlier design note said the builder was lost with LgbCheck, but it survives verbatim in the
 sandbox copy `/path/to/xivtool/Program.cs` (case "lgbindex", lines 246-308). LayerCensus
 and InstanceCensus are line-faithful ports of that code (split into two passes; splitting
 does not change row order because the two outputs never interleave within a file).
@@ -53,7 +53,7 @@ All four outputs iterate:
 - instances.csv skips `BGInstanceObject` rows entirely (BG parts only appear as
   layers.csv `BgPartCount`).
 - Golden schemas predate the identity rule (`Label,Dir` instead of `TerritoryId`);
-  kept exactly per CONTRACT exception. Identity upgrade = Wave 3 flag.
+  kept exactly per the documented exception. Identity upgrade = Wave 3 flag.
 - Floats via `Csv.Str` == `ToString("R")` (InvariantGlobalization), matching golden
   artifacts like `3.039233E-13` and `-0`.
 - Lumina parity matters: build with `LuminaDll=/path/to/Lumina.dll`

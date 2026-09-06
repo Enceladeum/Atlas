@@ -47,7 +47,7 @@ either zone, hence 6 not 7 LGB CSVs (the dumper always tries all 7).
 
 Identity-rule note: this port matches the golden schema exactly (pre-rule);
 `collision.csv` carries `LgbFile,LayerId,InstanceId` but no `TerritoryId`
-column — per CONTRACT, schema upgrades are Wave 3.
+column — schema upgrades are Wave 3.
 
 ## Upgrade 1 — `--tri-groups` (with `--obj`)
 

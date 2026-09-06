@@ -2,7 +2,7 @@
 // Spawns the server as a child process (free port, environment inherited, args
 // forwarded), then hosts the same web/ frontend in a WebView2 window. Everything
 // shown here stays reachable headless (CLI verb or API route) - the shell adds
-// nothing but a window (CONTRACT, Server/API boundary). Child stdout/stderr go
+// nothing but a window (Server/API boundary). Child stdout/stderr go
 // to %LOCALAPPDATA%\Atlas\server.log for post-mortems.
 //   Atlas.App [--game <sqpack>] [--port N] [--url http://host:port/] [--server <path>] [args...]
 //   --url attaches to an already-running server (no spawn, no kill-on-close).
