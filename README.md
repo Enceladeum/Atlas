@@ -5,12 +5,6 @@ core, repackaged with a web GUI for interactive browsing — sheets, territories
 assets, maps — while every capability stays fully scriptable headless (CLI + HTTP
 API).
 
-**Provenance.** Forked 2026-08-24 from `xivtool/src` (the consolidation port of
-the LgbDump/CutScan/LgbCheck lineage). The port is byte-identical to xivtool on
-golden outputs. `xivtool` remains the tool of
-record for the per-patch intake/diff pipeline; Atlas is the inspection/preview
-surface and the home of the new asset modules (MDL/MTRL/TEX, glTF, composed maps).
-
 ## Layout
 
     Atlas.slnx
